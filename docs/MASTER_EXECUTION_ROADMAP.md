@@ -189,7 +189,9 @@ The following tests must be completed and recorded as PASS before the system is 
 | E2E guide | DONE | PR #22 merged | `docs/setup/full_e2e_setup_and_validation_guide.md` | E2E validation NOT TESTED |
 | UI/UX guide integration | DONE | PR #23 merged | `docs/ui/ux_guide_integration_plan.md` | Hardik UI/UX guide PENDING |
 | Claude review package | DONE | PR #24 merged | `docs/review/claude_review_package.md` | Claude review completed |
-| UI concept direction package | IN REVIEW | Branch `ui/concept-direction-premium` | `docs/ui/ui_concept_direction_matrix.md`, `docs/ui/ui_concept_shortlist.md`, `docs/ui/ui_concept_selection_criteria.md`, `docs/ui/ui_concept_notes.md`, `docs/ui/ui_visual_batch_plan.md`, `docs/ui/ui_implementation_candidates.md` | Hardik to review and select concept direction |
+| UI concept direction package | DONE | PR #34 merged | `docs/ui/ui_concept_direction_matrix.md`, `docs/ui/ui_concept_shortlist.md`, `docs/ui/ui_concept_selection_criteria.md`, `docs/ui/ui_concept_notes.md`, `docs/ui/ui_visual_batch_plan.md`, `docs/ui/ui_implementation_candidates.md` | Completed |
+| UI concept prototype framework | IN REVIEW | Branch `ui/concept-prototype-framework` | `docs/ui/concepts/README.md`, `esphome/concepts/README.md`, `.github/workflows/esphome-compile.yml` | Hardik to review and merge |
+| UI concept prototypes (1-20) | PLANNED | None | `docs/ui/concepts/`, `esphome/concepts/` | Research and prototype all 20 concepts sequentially |
 | Claude independent review | COMPLETED — REQUEST CHANGES | Review delivered to Hardik | n/a | Findings tracked via cleanup PR series |
 | Immediate cleanup PR | DONE | PR #25 merged | `.gitignore`, `hardware/validation_results.md`, `esphome/door_side_rotary.yaml`, `esphome/bedside_gesture.yaml`, `docs/MASTER_EXECUTION_ROADMAP.md` | Completed |
 | VL53L4CD decision recording | DONE | PR #26 merged | `docs/vl53l4cd_support_verification.md`, `docs/01_PRD.md`, `docs/05_Backend_Schema.md` | Option B recorded |
