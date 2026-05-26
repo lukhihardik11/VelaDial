@@ -19,8 +19,11 @@
 #   7. Right swipe navigates in reverse.
 #   8. 3-dot indicator shows active page in amber.
 #   9. Brightness arc responds to knob rotation in ~5% steps.
-#       NOTE: Direct arc touch/drag is IMPLEMENTATION PENDING (LVGL 9 opaque
-#       struct prevents reading arc value in lambda). Knob is primary input.
+#       Direct arc touch/drag also updates brightness_pct and the centre
+#       label in real time via the arc's on_value trigger (exposed `x`
+#       variable per ESPHome LVGL docs). The HA round-trip fires only on
+#       release. Knob remains primary; both paths converge on the same
+#       brightness_pct global.
 #  10. Brightness knob press returns to Power page.
 #  11. Presets page shows 4 buttons; tap applies preset.
 #  12. Knob rotation on Presets page cycles highlight; press applies.
@@ -552,10 +555,46 @@ lvgl:
               height: 16
             bg_color: 0x333333
             bg_opa: COVER
+            # The arc's on_value trigger exposes the new value as `x` (per
+            # ESPHome LVGL widgets docs — https://esphome.io/components/lvgl/widgets/).
+            # The lambda is inlined here rather than routed through a
+            # `mode: single` script: LVGL fires on_value continuously
+            # during drag, and a single-mode script can drop intermediate
+            # events before the prior invocation finishes.
+            #
+            # WAKE-ONLY-FIRST is enforced inline. If the display was
+            # asleep when the user first touched the arc, the touchscreen
+            # on_touch handler sets `touch_woke_this_cycle=true` for
+            # ~500ms; while that latch is up, the inline `if:` rejects
+            # the action and only the wake itself happens. After the
+            # latch clears, subsequent on_value ticks update
+            # brightness_pct + label in real time. The HA round-trip
+            # still happens exactly once per drag, via guarded_arc_release
+            # on touch release.
+            #
+            # Idempotent under knob and HA-state-import paths: those also
+            # call `lvgl.arc.update` which fires on_value, but the inline
+            # lambda just re-writes the same brightness_pct value and
+            # re-renders the same label string — no behavioural side
+            # effect, only a small redundant write.
             on_value:
               then:
-                # WAKE-ONLY-FIRST: only update local state if awake
-                - script.execute: guarded_arc_value_change
+                - if:
+                    condition:
+                      lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+                    then:
+                      - lambda: |-
+                          int v = (int) x;
+                          if (v < 1) v = 1;
+                          if (v > 100) v = 100;
+                          id(brightness_pct) = v;
+                      - lvgl.label.update:
+                          id: brightness_value_label
+                          text: !lambda |-
+                            static char buf[8];
+                            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+                            return buf;
+                      - script.execute: screen_idle_timer
             on_release:
               then:
                 # WAKE-ONLY-FIRST: only send HA command if awake
@@ -902,34 +941,16 @@ script:
           else:
             - logger.log: "Blocked: swipe right rejected (wake-only-first)"
 
-  # --- Guarded arc value change (called by brightness_arc on_value) ---
-  # IMPLEMENTATION PENDING: Direct arc touch/drag does NOT currently update
-  # brightness_pct. The LVGL 9 opaque struct prevents direct C API access
-  # (lv_arc_get_value fails with incomplete type error). The arc widget
-  # visually responds to touch drag, but the internal brightness_pct global
-  # is only updated via knob rotation (handle_knob_cw / handle_knob_ccw).
-  #
-  # Knob-based brightness control works correctly.
-  # Direct arc touch/drag brightness sync requires either:
-  #   (a) ESPHome LVGL component exposing arc value via a sensor/lambda, or
-  #   (b) A future ESPHome version providing safe arc value access.
-  #
-  # Until resolved, the arc is visual-only for touch; knob is the primary
-  # brightness input. The on_release still sends whatever brightness_pct
-  # holds (set by knob), so knob → release → HA command works correctly.
-  - id: guarded_arc_value_change
-    mode: single
-    then:
-      - if:
-          condition:
-            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
-          then:
-            - script.execute: screen_idle_timer
-            - logger.log: "Arc value changed (visual only — brightness_pct updated via knob only)"
-          else:
-            - logger.log: "Blocked: arc value change rejected (wake-only-first)"
-
   # --- Guarded arc release (called by brightness_arc on_release) ---
+  # The arc's on_value handler (inlined in the arc widget definition above)
+  # updates brightness_pct and the visible label in real time as the user
+  # drags. This handler fires once on touch release and pushes the final
+  # brightness value to Home Assistant — keeping the HA round-trip to one
+  # call per gesture, per the ESPHome LVGL "use on_release for the final
+  # value" guidance. Knob rotation also updates brightness_pct + the arc
+  # (via lvgl.arc.update); the same on_value path then reconciles the
+  # label, and send_brightness_debounced handles the HA call from the knob
+  # path independently.
   - id: guarded_arc_release
     mode: single
     then:
