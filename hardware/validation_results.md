@@ -259,9 +259,20 @@ A premium UI concept direction package has been created with 20 deeply expanded 
 
 ---
 
+## UI Concept 01: Minimal Thermostat Note
+
+**Date:** 2026-05-27  
+**Status:** Concept prototype YAML created and compile PASSED (ESPHome 2026.5.0, 177s, 0 errors)  
+**Validation Performed:** No  
+**Physical PASS Results Added:** No  
+
+Concept 01 (Minimal Thermostat) has been prototyped as a single-page UI concept for the door-side ELECROW controller. The concept uses a central label for power/brightness display and a surrounding arc for brightness indication. Knob CW/CCW adjusts brightness, knob press toggles power. Wake-only-first logic is preserved. This is a concept exploration only — not production, not tested on physical hardware. Four documentation files (research.md, design_spec.md, implementation_notes.md, validation_notes.md) accompany the YAML.
+
+---
+
 ## Document control
 
-**Version:** 0.7 — Added UI concept direction package note; no validation performed.  
+**Version:** 0.8 — Added Concept 01 Minimal Thermostat note; compile PASSED, no physical validation.  
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).

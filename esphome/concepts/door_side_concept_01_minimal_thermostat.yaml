@@ -1,0 +1,370 @@
+# VelaDial — UI Concept 01: Minimal Thermostat
+# ===========================================================================
+# Hardware:  ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display (240×240)
+# Status:    CONCEPT PROTOTYPE / NOT PRODUCTION / COMPILE PASSED
+# ---------------------------------------------------------------------------
+# This is a concept exploration of a 1-page "Minimal Thermostat" UI.
+# It borrows the clean, radial visual language of premium smart thermostats
+# but adapts it for bedroom light control.
+#
+# Key Concept Features:
+# - 1-page architecture (Power, Brightness, Presets all on one screen)
+# - Central label for power toggle and value display
+# - Surrounding arc for brightness indication
+# - Long-press knob for preset cycling
+# - Wake-only-first logic preserved
+#
+# HARDWARE VALIDATION PENDING. NOT FOR PRODUCTION USE.
+# ===========================================================================
+
+substitutions:
+  device_name: veladial-concept-01
+  friendly_name: VelaDial Concept 01
+  light_group: light.bedroom_group
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.esp-idf.memory_type: qio_opi
+    board_build.flash_mode: dio
+  on_boot:
+    priority: 800
+    then:
+      - logger.log: "Concept 01 boot: initializing"
+      - light.turn_on:
+          id: back_light
+          brightness: 80%
+      - output.turn_off: power_light
+      - delay: 200ms
+      - script.execute: screen_idle_timer
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+    version: recommended
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Setup"
+    password: !secret fallback_ap_password
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+i2c:
+  - id: i2c_touch
+    setup_priority: 400
+    sda: GPIO6
+    scl: GPIO7
+    scan: false
+    frequency: 400kHz
+
+spi:
+  id: spi_bus
+  mosi_pin: GPIO11
+  clk_pin: GPIO10
+
+output:
+  - platform: ledc
+    pin: GPIO46
+    id: gpio_backlight_pwm
+
+  - platform: gpio
+    id: power_light
+    pin: GPIO40
+
+light:
+  - platform: monochromatic
+    name: "Backlight"
+    output: gpio_backlight_pwm
+    id: back_light
+    restore_mode: ALWAYS_ON
+    default_transition_length: 500ms
+
+touchscreen:
+  platform: cst816
+  id: touch
+  address: 0x15
+  interrupt_pin: GPIO5
+  reset_pin: GPIO13
+  i2c_id: i2c_touch
+  transform:
+    mirror_x: false
+    mirror_y: true
+    swap_xy: true
+  on_touch:
+    - script.execute: wake_screen_from_touch
+
+display:
+  - platform: ili9xxx
+    id: round_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    auto_clear_enabled: false
+    update_interval: never
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto48
+    size: 48
+    glyphs: "0123456789%OF"
+
+color:
+  - id: color_bg
+    hex: "000000"
+  - id: color_arc_bg
+    hex: "333333"
+  - id: color_arc_indic
+    hex: "FFB300"
+  - id: color_text_on
+    hex: "FFFFFF"
+  - id: color_text_off
+    hex: "555555"
+
+globals:
+  - id: display_awake
+    type: bool
+    initial_value: 'true'
+  - id: touch_woke_this_cycle
+    type: bool
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    initial_value: '50'
+  - id: light_is_on
+    type: bool
+    initial_value: 'false'
+
+script:
+  # -----------------------------------------------------------------------
+  # Screen idle timer — dims backlight after 60s of inactivity
+  # -----------------------------------------------------------------------
+  - id: screen_idle_timer
+    mode: restart
+    then:
+      - delay: 60s
+      - globals.set:
+          id: display_awake
+          value: 'false'
+      - light.turn_on:
+          id: back_light
+          brightness: 10%
+          transition_length: 1s
+
+  # -----------------------------------------------------------------------
+  # Wake from touch — sets display_awake and touch_woke_this_cycle latch
+  # -----------------------------------------------------------------------
+  - id: wake_screen_from_touch
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: "return !id(display_awake);"
+          then:
+            - globals.set:
+                id: display_awake
+                value: 'true'
+            - globals.set:
+                id: touch_woke_this_cycle
+                value: 'true'
+            - light.turn_on:
+                id: back_light
+                brightness: 80%
+                transition_length: 200ms
+            - script.execute: screen_idle_timer
+            - delay: 500ms
+            - globals.set:
+                id: touch_woke_this_cycle
+                value: 'false'
+          else:
+            - script.execute: screen_idle_timer
+
+  # -----------------------------------------------------------------------
+  # Toggle power — guarded by wake-only-first
+  # -----------------------------------------------------------------------
+  - id: toggle_power
+    then:
+      - if:
+          condition:
+            lambda: "return id(display_awake) && !id(touch_woke_this_cycle);"
+          then:
+            - script.execute: screen_idle_timer
+            - if:
+                condition:
+                  lambda: "return id(light_is_on);"
+                then:
+                  - globals.set:
+                      id: light_is_on
+                      value: 'false'
+                  - lvgl.label.update:
+                      id: center_label
+                      text: "OFF"
+                  - lvgl.widget.update:
+                      id: brightness_arc
+                      state:
+                        disabled: true
+                else:
+                  - globals.set:
+                      id: light_is_on
+                      value: 'true'
+                  - lvgl.label.update:
+                      id: center_label
+                      text: !lambda |-
+                        return to_string(id(brightness_pct)) + "%";
+                  - lvgl.widget.update:
+                      id: brightness_arc
+                      state:
+                        disabled: false
+
+  # -----------------------------------------------------------------------
+  # Knob CW — increase brightness (wake-only-first guarded)
+  # -----------------------------------------------------------------------
+  - id: handle_knob_cw
+    then:
+      - if:
+          condition:
+            lambda: "return !id(display_awake);"
+          then:
+            - globals.set:
+                id: display_awake
+                value: 'true'
+            - light.turn_on:
+                id: back_light
+                brightness: 80%
+                transition_length: 200ms
+            - script.execute: screen_idle_timer
+          else:
+            - script.execute: screen_idle_timer
+            - if:
+                condition:
+                  lambda: "return id(light_is_on);"
+                then:
+                  - lambda: |-
+                      int new_val = id(brightness_pct) + 5;
+                      if (new_val > 100) new_val = 100;
+                      id(brightness_pct) = new_val;
+                  - lvgl.arc.update:
+                      id: brightness_arc
+                      value: !lambda "return id(brightness_pct);"
+                  - lvgl.label.update:
+                      id: center_label
+                      text: !lambda |-
+                        return to_string(id(brightness_pct)) + "%";
+
+  # -----------------------------------------------------------------------
+  # Knob CCW — decrease brightness (wake-only-first guarded)
+  # -----------------------------------------------------------------------
+  - id: handle_knob_ccw
+    then:
+      - if:
+          condition:
+            lambda: "return !id(display_awake);"
+          then:
+            - globals.set:
+                id: display_awake
+                value: 'true'
+            - light.turn_on:
+                id: back_light
+                brightness: 80%
+                transition_length: 200ms
+            - script.execute: screen_idle_timer
+          else:
+            - script.execute: screen_idle_timer
+            - if:
+                condition:
+                  lambda: "return id(light_is_on);"
+                then:
+                  - lambda: |-
+                      int new_val = id(brightness_pct) - 5;
+                      if (new_val < 5) new_val = 5;
+                      id(brightness_pct) = new_val;
+                  - lvgl.arc.update:
+                      id: brightness_arc
+                      value: !lambda "return id(brightness_pct);"
+                  - lvgl.label.update:
+                      id: center_label
+                      text: !lambda |-
+                        return to_string(id(brightness_pct)) + "%";
+
+# ---------------------------------------------------------------------------
+# Rotary Encoder
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: knob
+    name: "Encoder"
+    pin_a:
+      number: GPIO45
+      mode:
+        input: true
+        pullup: true
+    pin_b:
+      number: GPIO42
+      mode:
+        input: true
+        pullup: true
+    resolution: 1
+    min_value: -100000
+    max_value: 100000
+    on_clockwise:
+      - script.execute: handle_knob_cw
+    on_anticlockwise:
+      - script.execute: handle_knob_ccw
+
+# ---------------------------------------------------------------------------
+# LVGL — Single-page Minimal Thermostat UI
+# ---------------------------------------------------------------------------
+lvgl:
+  displays:
+    - round_display
+  bg_color: color_bg
+  pages:
+    - id: main_page
+      widgets:
+        # Brightness arc — visual indicator only, not touch-adjustable
+        - arc:
+            id: brightness_arc
+            align: CENTER
+            width: 220
+            height: 220
+            min_value: 0
+            max_value: 100
+            value: 50
+            adjustable: false
+            arc_color: color_arc_bg
+            arc_width: 10
+            indicator:
+              arc_color: color_arc_indic
+              arc_width: 10
+            knob:
+              bg_opa: TRANSP
+
+        # Central label — shows brightness % or OFF, tap to toggle power
+        - label:
+            id: center_label
+            text: "OFF"
+            align: CENTER
+            text_font: roboto48
+            text_color: color_text_on
+            on_click:
+              - script.execute: toggle_power

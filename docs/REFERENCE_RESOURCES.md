@@ -54,6 +54,11 @@ These are primary reference sources for coding and research across all phases.
 - LVGL Official Docs (Themes): https://docs.lvgl.io/master/overview/style.html
 - HA Community LVGL Theming Discussion: https://community.home-assistant.io/t/theming-engine-for-esphome-lvgl/875097
 
+## LVGL Tools / Advanced UI
+
+- LVGL Editor (Official): https://github.com/lvgl/lvgl_editor
+- LVGL UI Design Playlist (YouTube): https://www.youtube.com/watch?v=gCxBAK9EByA&list=PLh7MtULLWU2QnEe9_BIKHDe6Q0F1PT41C
+
 ## Research Directive
 
 For each phase, conduct extra-wide internet research beyond these sources.
