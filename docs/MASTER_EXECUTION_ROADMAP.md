@@ -12,7 +12,7 @@
 
 The project has established a solid documentation foundation, but firmware and hardware validation remain in preliminary states.
 
-Pull requests **#1 through #32** have been merged. PRs #18–#24 added the Master Execution Roadmap, door-side firmware draft, bedside firmware draft, Raspberry Pi / Home Assistant setup guide, full E2E setup and validation guide, UI/UX guide integration plan, and Claude review package. PRs #25–#27 addressed the Claude review findings: immediate cleanup (PR #25), VL53L4CD decision recording (PR #26), and pre-migration repo cleanup (PR #27). PR #29 added the Final Completion Roadmap. PR #30 added ESPHome compile CI and secrets template hardening (and reverted the PR #25 preset value type regression). PR #31 enabled door brightness arc direct-touch with CI validation. PR #32 added Home Assistant config examples.
+Pull requests **#1 through #35** have been merged. PRs #18–#24 added the Master Execution Roadmap, door-side firmware draft, bedside firmware draft, Raspberry Pi / Home Assistant setup guide, full E2E setup and validation guide, UI/UX guide integration plan, and Claude review package. PRs #25–#27 addressed the Claude review findings: immediate cleanup (PR #25), VL53L4CD decision recording (PR #26), and pre-migration repo cleanup (PR #27). PR #29 added the Final Completion Roadmap. PR #30 added ESPHome compile CI and secrets template hardening (and reverted the PR #25 preset value type regression). PR #31 enabled door brightness arc direct-touch with CI validation. PR #32 added Home Assistant config examples. PR #34 added the premium UI concept direction package (20 concepts, 6 documents), superseding Claude's PR #33. PR #35 added the UI concept prototype framework.
 
 The **independent Claude review** of PRs #15–#24 returned a verdict of **REQUEST CHANGES** with three blocking items. All three have been resolved: Step 15B gate waiver noted (PR #25), VL53L4CD decision recorded as Option B / defer to v2 (PR #26), and `.gitignore` hardened with `secrets.yaml` patterns (PR #25).
 
@@ -190,8 +190,9 @@ The following tests must be completed and recorded as PASS before the system is 
 | UI/UX guide integration | DONE | PR #23 merged | `docs/ui/ux_guide_integration_plan.md` | Hardik UI/UX guide PENDING |
 | Claude review package | DONE | PR #24 merged | `docs/review/claude_review_package.md` | Claude review completed |
 | UI concept direction package | DONE | PR #34 merged | `docs/ui/ui_concept_direction_matrix.md`, `docs/ui/ui_concept_shortlist.md`, `docs/ui/ui_concept_selection_criteria.md`, `docs/ui/ui_concept_notes.md`, `docs/ui/ui_visual_batch_plan.md`, `docs/ui/ui_implementation_candidates.md` | Completed |
-| UI concept prototype framework | IN REVIEW | Branch `ui/concept-prototype-framework` | `docs/ui/concepts/README.md`, `esphome/concepts/README.md`, `.github/workflows/esphome-compile.yml` | Hardik to review and merge |
-| UI concept prototypes (1-20) | PLANNED | None | `docs/ui/concepts/`, `esphome/concepts/` | Research and prototype all 20 concepts sequentially |
+| UI concept prototype framework | DONE | PR #35 merged | `docs/ui/concepts/README.md`, `esphome/concepts/README.md` | Completed |
+| UI concept prototypes (1-20) | IN PROGRESS | Concept 01 in review | `docs/ui/concepts/`, `esphome/concepts/` | Research and prototype all 20 concepts sequentially |
+| Concept 01: Minimal Thermostat | IN REVIEW | Branch `ui/concept-01-minimal-thermostat` | `docs/ui/concepts/01_minimal_thermostat/`, `esphome/concepts/door_side_concept_01_minimal_thermostat.yaml` | Compile PASSED; Hardik to review |
 | Claude independent review | COMPLETED — REQUEST CHANGES | Review delivered to Hardik | n/a | Findings tracked via cleanup PR series |
 | Immediate cleanup PR | DONE | PR #25 merged | `.gitignore`, `hardware/validation_results.md`, `esphome/door_side_rotary.yaml`, `esphome/bedside_gesture.yaml`, `docs/MASTER_EXECUTION_ROADMAP.md` | Completed |
 | VL53L4CD decision recording | DONE | PR #26 merged | `docs/vl53l4cd_support_verification.md`, `docs/01_PRD.md`, `docs/05_Backend_Schema.md` | Option B recorded |
