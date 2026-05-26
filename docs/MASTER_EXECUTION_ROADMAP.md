@@ -8,6 +8,8 @@
 
 ## SECTION A — Current Project State
 
+> **See also:** [`docs/FINAL_COMPLETION_ROADMAP.md`](FINAL_COMPLETION_ROADMAP.md) — the concrete punch list of what remains before VelaDial v1 is *ready for hardware validation*, what only Hardik can finish with physical hardware, the recommended near-term PR sequence (A–E), and the explicit *no clean-repo migration yet* decision.
+
 The project has established a solid documentation foundation, but firmware and hardware validation remain in preliminary states.
 
 Pull requests **#1 through #24** have been merged. The most recent set (PRs #18–#24) added the Master Execution Roadmap, door-side firmware draft, bedside firmware draft, Raspberry Pi / Home Assistant setup guide, full E2E setup and validation guide, UI/UX guide integration plan, and Claude review package.
