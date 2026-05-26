@@ -32,7 +32,7 @@ Any change to the above requires Hardik to explicitly re-open the relevant decis
 
 | PR | Title | Status | Effect |
 | :-- | :-- | :-- | :-- |
-| #25 | Address immediate Claude review cleanup items | MERGED | Hardened `.gitignore`, fixed preset numeric types, clarified APDS update_interval, recorded Step 15B process waiver. |
+| #25 | Address immediate Claude review cleanup items | MERGED | Hardened `.gitignore`, changed preset values from strings to numerics *(later reverted in PR #30 — ESPHome's `homeassistant.action` schema requires string values, confirmed by CI)*, clarified APDS update_interval, recorded Step 15B process waiver. |
 | #26 | Record VL53L4CD v1 decision — Option B (defer to v2) | MERGED | VL53L4CD removed from v1 software; PRD/Schema/Roadmap updated. |
 | #27 | Prepare repo for clean migration | MERGED | Repo-level cleanup; main is in a good state for continued development. |
 

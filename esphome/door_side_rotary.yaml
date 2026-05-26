@@ -1116,12 +1116,15 @@ script:
             lambda: 'return preset_index == 0;'
           then:
             # Warm White: color_temp 370 mireds (~2700K), brightness 100%
+            # NOTE: homeassistant.action `data:` values must be strings per
+            # ESPHome schema. CI failure in PR #30 confirmed this; PR #25's
+            # numeric conversion was reverted here.
             - homeassistant.action:
                 action: light.turn_on
                 data:
                   entity_id: ${light_group}
-                  color_temp: 370
-                  brightness_pct: 100
+                  color_temp: "370"
+                  brightness_pct: "100"
       - if:
           condition:
             lambda: 'return preset_index == 1;'
@@ -1131,8 +1134,8 @@ script:
                 action: light.turn_on
                 data:
                   entity_id: ${light_group}
-                  color_temp: 454
-                  brightness_pct: 70
+                  color_temp: "454"
+                  brightness_pct: "70"
       - if:
           condition:
             lambda: 'return preset_index == 2;'
@@ -1142,8 +1145,8 @@ script:
                 action: light.turn_on
                 data:
                   entity_id: ${light_group}
-                  color_temp: 250
-                  brightness_pct: 100
+                  color_temp: "250"
+                  brightness_pct: "100"
       - if:
           condition:
             lambda: 'return preset_index == 3;'
@@ -1153,8 +1156,8 @@ script:
                 action: light.turn_on
                 data:
                   entity_id: ${light_group}
-                  color_temp: 454
-                  brightness_pct: 5
+                  color_temp: "454"
+                  brightness_pct: "5"
       - script.execute: update_preset_buttons
       - script.execute: update_led_ring
       - logger.log:
