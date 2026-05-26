@@ -1,0 +1,156 @@
+# ============================================================================
+# VelaDial — example Home Assistant package
+# ============================================================================
+#
+# Status:  PLACEHOLDER EXAMPLE — USER SETUP PENDING / NOT TESTED
+# Purpose: Provide a copy-and-edit starting point for the Home Assistant side
+#          of VelaDial. Defines `light.bedroom_group` (the entity both ESPHome
+#          devices target) plus two optional template helpers.
+#
+# How to install (one-time):
+#   1. Add to /config/configuration.yaml (once, if not already enabled):
+#
+#          homeassistant:
+#            packages: !include_dir_named packages
+#
+#   2. Copy this file to /config/packages/veladial.yaml on your Home Assistant
+#      instance (filename can be anything ending in .yaml).
+#   3. Replace every placeholder entity ID below with your real Tuya bulb
+#      entity IDs as LocalTuya assigned them.
+#   4. Uncomment any optional sections you want.
+#   5. Reload YAML (Developer Tools → YAML → Reload Configuration) or restart
+#      Home Assistant.
+#
+# What to expect:
+#   - `light.bedroom_group` becomes a Home Assistant group light entity.
+#   - Both ESPHome devices target this exact entity_id, so it MUST match.
+#   - Group attributes (brightness, color_temp) reflect a sensible aggregate
+#     of the member bulbs — read the HA Group integration docs for details.
+#
+# What this file does NOT do:
+#   - Does NOT contain real Wi-Fi credentials.
+#   - Does NOT contain real Tuya local keys (those live in HA's encrypted
+#     storage, configured via the LocalTuya UI integration flow — not YAML).
+#   - Does NOT contain real Home Assistant long-lived access tokens.
+#   - Does NOT contain real device IDs or LAN IPs.
+#   - Does NOT prove the path works. Until Hardik runs this on real hardware
+#     and confirms control, every row in hardware/validation_results.md
+#     remains NOT TESTED.
+#
+# Alternative:
+#   You may instead create the light group via the Helpers UI as documented in
+#   docs/setup/raspberry_pi_home_assistant_setup.md §7. Use either this YAML
+#   package OR the UI, not both — duplicates fight each other.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Required: bedroom light group
+# ----------------------------------------------------------------------------
+#
+# Replace the five `light.bedroom_bulb_N` entries below with the real entity
+# IDs LocalTuya creates for your Tuya bulbs. LocalTuya entity IDs are usually
+# auto-generated from device IDs (e.g. `light.tuya_bulb_4dxxxxxxxxxxxxxxxx`)
+# — find them in Settings → Devices & Services → Entities after adoption.
+#
+# The `name: "Bedroom Group"` field is what users see in the UI; the actual
+# entity_id becomes `light.bedroom_group` because that is the slugified name
+# Home Assistant will derive. Both ESPHome YAML files hardcode
+# `light.bedroom_group` as their target — do not rename without also
+# updating the ESPHome `light_group:` substitution in both YAMLs.
+
+light:
+  - platform: group
+    name: "Bedroom Group"
+    # Five-bulb bedroom group. Replace placeholders with real LocalTuya IDs.
+    entities:
+      - light.bedroom_bulb_1  # PLACEHOLDER — replace with real LocalTuya entity ID
+      - light.bedroom_bulb_2  # PLACEHOLDER — replace with real LocalTuya entity ID
+      - light.bedroom_bulb_3  # PLACEHOLDER — replace with real LocalTuya entity ID
+      - light.bedroom_bulb_4  # PLACEHOLDER — replace with real LocalTuya entity ID
+      - light.bedroom_bulb_5  # PLACEHOLDER — replace with real LocalTuya entity ID
+
+# ----------------------------------------------------------------------------
+# OPTIONAL: template helpers (commented-out by default)
+# ----------------------------------------------------------------------------
+#
+# These mirror the optional template entities described in
+# docs/05_Backend_Schema.md §"Home Assistant derived entities". They are NOT
+# required for v1 — the door-side and bedside firmware do not depend on them.
+# Uncomment after you have confirmed the basic light group works.
+#
+# Notes:
+#   - `sensor.veladial_doorside_temperature` and `_humidity` are the SHT45
+#     readings exposed by the door-side ESPHome device. They will only exist
+#     after that device is adopted and the SHT45 sensor is wired (still
+#     hardware-untested).
+#   - `binary_sensor.veladial_bedside_gesture_left` / `_right` are the
+#     APDS-9960 gesture events from the bedside device. Same hardware caveat.
+#   - VL53L4CD-derived entities (`hand_present`, `hand_holding`) are NOT
+#     materialised in v1 (Option B, see docs/vl53l4cd_support_verification.md)
+#     — do not reference them here in v1.
+#
+# Uncomment the entire `template:` block below to enable.
+
+# template:
+#   - sensor:
+#       # Simple comfort index from SHT45 temperature + humidity.
+#       # Replace the formula with whatever comfort model you prefer
+#       # (heat index, dew point, PMV approximation, etc.).
+#       - name: "Bedroom Comfort Index"
+#         unique_id: bedroom_comfort_index
+#         unit_of_measurement: "°C"
+#         state_class: measurement
+#         state: >-
+#           {% set t = states('sensor.veladial_doorside_temperature') | float(default=0) %}
+#           {% set h = states('sensor.veladial_doorside_humidity') | float(default=0) %}
+#           {# Trivial example: temp + (humidity / 10), placeholder formula only. #}
+#           {{ (t + (h / 10)) | round(1) }}
+#         availability: >-
+#           {{
+#             has_value('sensor.veladial_doorside_temperature') and
+#             has_value('sensor.veladial_doorside_humidity')
+#           }}
+#
+#     binary_sensor:
+#       # "Has anyone interacted with the bedside controller recently?"
+#       # In v1 this is gesture-only (APDS). When VL53L4CD lands in v2, you
+#       # may want to include hand_present transitions in this template too.
+#       - name: "Bedroom Occupied"
+#         unique_id: bedroom_occupied
+#         device_class: occupancy
+#         state: >-
+#           {% set window = 30 * 60 %}  {# 30 minutes #}
+#           {% set last_left  = states.binary_sensor.veladial_bedside_gesture_left.last_changed
+#               if states.binary_sensor.veladial_bedside_gesture_left is not none else None %}
+#           {% set last_right = states.binary_sensor.veladial_bedside_gesture_right.last_changed
+#               if states.binary_sensor.veladial_bedside_gesture_right is not none else None %}
+#           {% set most_recent = [last_left, last_right] | select('!=', None) | list | max(default=None) %}
+#           {{ (most_recent is not none) and ((now() - most_recent).total_seconds() < window) }}
+
+# ----------------------------------------------------------------------------
+# OPTIONAL: example automation skeleton (commented-out by default)
+# ----------------------------------------------------------------------------
+#
+# This is illustrative only. v1 firmware does not require any automation —
+# the ESPHome devices call `light.toggle` / `light.turn_on` directly on
+# `light.bedroom_group`. Uncomment only if you want HA-side reactions to
+# events the firmware emits.
+
+# automation:
+#   - id: veladial_log_gesture_events
+#     alias: "VelaDial — log bedside gesture events"
+#     description: >-
+#       Example: write a log line whenever the bedside APDS-9960 fires LEFT
+#       or RIGHT. Useful for tuning the gesture cooldown during bring-up.
+#       Safe to delete after tuning.
+#     trigger:
+#       - platform: state
+#         entity_id:
+#           - binary_sensor.veladial_bedside_gesture_left
+#           - binary_sensor.veladial_bedside_gesture_right
+#         to: "on"
+#     action:
+#       - service: logbook.log
+#         data:
+#           name: "VelaDial"
+#           message: "Bedside gesture fired: {{ trigger.entity_id }}"
