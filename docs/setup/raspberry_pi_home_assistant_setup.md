@@ -86,6 +86,8 @@ You must create this entity for the system to function.
    - Adjust brightness.
    - Adjust color temperature (if supported by the bulbs).
 
+> **YAML alternative.** If you prefer config-as-code over the Helpers UI, the repository ships a placeholder package at [`homeassistant/packages/veladial_example.yaml`](../../homeassistant/packages/veladial_example.yaml) that defines `light.bedroom_group` plus two optional template helpers (commented-out). See [`homeassistant/README.md`](../../homeassistant/README.md) for the copy-and-edit procedure. Use **either** this package **or** the Helpers UI, not both — duplicate definitions of the same entity fight each other. **Status of these examples: USER SETUP PENDING / NOT TESTED.**
+
 ## 8. LocalTuya Setup
 
 LocalTuya is a community integration that allows local control of Tuya devices, bypassing the cloud for faster response times.
@@ -96,7 +98,7 @@ LocalTuya is a community integration that allows local control of Tuya devices, 
 4. **Tuya Local Key:** You must obtain the `localkey` for each Tuya device. This typically involves creating a Tuya IoT developer account. Refer to community guides for the current extraction method. **Do not put Tuya keys in the repository.**
 5. **Device Discovery:** LocalTuya often auto-discovers devices on the local network. If not, you will need the device IP address, ID, and local key to add it manually.
 6. **Local Control Goal:** The primary goal is local LAN control. Cloud dependency should be minimized to initial key extraction only.
-7. **Entity Mapping:** During LocalTuya setup, carefully map the Tuya Data Points (DPs) to the correct Home Assistant entity types (e.g., mapping the brightness DP to the brightness feature of a light entity).
+7. **Entity Mapping:** During LocalTuya setup, carefully map the Tuya Data Points (DPs) to the correct Home Assistant entity types (e.g., mapping the brightness DP to the brightness feature of a light entity). A placeholder-only cheat sheet covering typical Tuya RGB+CCT bulb DPs, common mis-mapping pitfalls (brightness range, color-temp range), and what the repository deliberately does **not** carry (real `local_key`s, IPs, device IDs) lives at [`homeassistant/localtuya_mapping_notes.md`](../../homeassistant/localtuya_mapping_notes.md). **Status: USER SETUP PENDING / NOT TESTED.**
 8. **Troubleshooting:** If entities become unavailable, verify the device IP address hasn't changed (use DHCP reservations) and that the local key is still valid.
 
 ## 9. Network Reliability
