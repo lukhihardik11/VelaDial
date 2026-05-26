@@ -1,5 +1,7 @@
 # VelaDial: UI/UX Guide Integration Plan
 
+> **See also:** [`docs/ui/ui_concept_direction_matrix.md`](ui_concept_direction_matrix.md), [`docs/ui/ui_concept_shortlist.md`](ui_concept_shortlist.md), [`docs/ui/ui_concept_selection_criteria.md`](ui_concept_selection_criteria.md), and [`docs/ui/ui_concept_notes.md`](ui_concept_notes.md) — the **UI Concept Direction Package** (added in PR D). The 20-concept matrix, shortlist, and scoring framework supersede the generic "send me assets" intake-list-only approach previously implied here. The asset intake checklist in this file's §5 below remains a useful sub-task once a primary concept direction is chosen, but it is no longer the headline UI/UX deliverable — concept-direction-first is.
+
 ## 1. Scope and Status
 
 This document serves as the **planning and integration guide** for the VelaDial door-side display UI. 
