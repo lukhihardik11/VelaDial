@@ -248,9 +248,20 @@ A Claude review package has been created for independent review of the VelaDial 
 
 ---
 
+## UI Concept Direction Package Note
+
+**Date:** 2026-05-26  
+**Status:** UI concept direction package created (6 documents in `docs/ui/`)  
+**Validation Performed:** No  
+**Physical PASS Results Added:** No  
+
+A premium UI concept direction package has been created with 20 deeply expanded concepts, a scored shortlist, selection criteria with pass/fail gates, a creative design notebook, a visual batch plan, and implementation candidates. This is a documentation-only deliverable. No firmware was changed, no YAML was modified, and all hardware/E2E validation remains NOT TESTED. Hardik must select a concept direction before any UI implementation begins.
+
+---
+
 ## Document control
 
-**Version:** 0.6 — Added Phase 6 Claude review package note; no validation performed.  
+**Version:** 0.7 — Added UI concept direction package note; no validation performed.  
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
