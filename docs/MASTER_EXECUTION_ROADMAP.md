@@ -12,9 +12,9 @@
 
 The project has established a solid documentation foundation, but firmware and hardware validation remain in preliminary states.
 
-Pull requests **#1 through #24** have been merged. The most recent set (PRs #18–#24) added the Master Execution Roadmap, door-side firmware draft, bedside firmware draft, Raspberry Pi / Home Assistant setup guide, full E2E setup and validation guide, UI/UX guide integration plan, and Claude review package.
+Pull requests **#1 through #32** have been merged. PRs #18–#24 added the Master Execution Roadmap, door-side firmware draft, bedside firmware draft, Raspberry Pi / Home Assistant setup guide, full E2E setup and validation guide, UI/UX guide integration plan, and Claude review package. PRs #25–#27 addressed the Claude review findings: immediate cleanup (PR #25), VL53L4CD decision recording (PR #26), and pre-migration repo cleanup (PR #27). PR #29 added the Final Completion Roadmap. PR #30 added ESPHome compile CI and secrets template hardening (and reverted the PR #25 preset value type regression). PR #31 enabled door brightness arc direct-touch with CI validation. PR #32 added Home Assistant config examples.
 
-Subsequent to PR #24, an **independent Claude review** of PRs #15–#24 was completed and returned a verdict of **REQUEST CHANGES** with three blocking items: Step 15B gate crossed by PR #19 (process), VL53L4CD A/B/C decision pending (Hardik), and `.gitignore` missing `secrets.yaml` patterns (security). An **immediate cleanup PR** addressing the security fix, the gate waiver note, a preset value type change (later reverted — see note below), an APDS update_interval clarification, and this roadmap update is in review.
+The **independent Claude review** of PRs #15–#24 returned a verdict of **REQUEST CHANGES** with three blocking items. All three have been resolved: Step 15B gate waiver noted (PR #25), VL53L4CD decision recorded as Option B / defer to v2 (PR #26), and `.gitignore` hardened with `secrets.yaml` patterns (PR #25).
 
 > **Note on PR #25's preset value type change:** PR #25 converted the preset `homeassistant.action` `data:` values (`color_temp`, `brightness_pct`) from quoted strings to YAML numerics. CI introduced in PR #30 surfaced that ESPHome's schema rejects this — `data:` values must be strings. PR #30 reverts those 8 values back to quoted strings. The lesson: ESPHome `homeassistant.action` `data:` literals must be strings (or `!lambda` expressions). Future PRs should not "clean up" these to numerics.
 
@@ -189,15 +189,21 @@ The following tests must be completed and recorded as PASS before the system is 
 | E2E guide | DONE | PR #22 merged | `docs/setup/full_e2e_setup_and_validation_guide.md` | E2E validation NOT TESTED |
 | UI/UX guide integration | DONE | PR #23 merged | `docs/ui/ux_guide_integration_plan.md` | Hardik UI/UX guide PENDING |
 | Claude review package | DONE | PR #24 merged | `docs/review/claude_review_package.md` | Claude review completed |
+| UI concept direction package | IN REVIEW | Branch `ui/concept-direction-premium` | `docs/ui/ui_concept_direction_matrix.md`, `docs/ui/ui_concept_shortlist.md`, `docs/ui/ui_concept_selection_criteria.md`, `docs/ui/ui_concept_notes.md`, `docs/ui/ui_visual_batch_plan.md`, `docs/ui/ui_implementation_candidates.md` | Hardik to review and select concept direction |
 | Claude independent review | COMPLETED — REQUEST CHANGES | Review delivered to Hardik | n/a | Findings tracked via cleanup PR series |
-| Immediate cleanup PR | IN REVIEW | branch `chore/claude-review-immediate-cleanup` | `.gitignore`, `hardware/validation_results.md`, `esphome/door_side_rotary.yaml`, `esphome/bedside_gesture.yaml`, `docs/MASTER_EXECUTION_ROADMAP.md` | Hardik to review and merge |
-| Pre-migration cleanup PR | PLANNED | None | TBD branch `chore/pre-migration-repo-cleanup` | Open after immediate cleanup merges |
+| Immediate cleanup PR | DONE | PR #25 merged | `.gitignore`, `hardware/validation_results.md`, `esphome/door_side_rotary.yaml`, `esphome/bedside_gesture.yaml`, `docs/MASTER_EXECUTION_ROADMAP.md` | Completed |
+| VL53L4CD decision recording | DONE | PR #26 merged | `docs/vl53l4cd_support_verification.md`, `docs/01_PRD.md`, `docs/05_Backend_Schema.md` | Option B recorded |
+| Pre-migration cleanup PR | DONE | PR #27 merged | Repo-wide cleanup | Completed |
+| Final Completion Roadmap | DONE | PR #29 merged | `docs/FINAL_COMPLETION_ROADMAP.md` | Completed |
+| Compile CI + secrets hardening | DONE | PR #30 merged | `.github/workflows/`, `esphome/secrets.yaml.example` | CI active |
+| Door brightness arc direct-touch | DONE | PR #31 merged | `esphome/door_side_rotary.yaml` | CI validated |
+| HA config examples | DONE | PR #32 merged | `setup/` | Completed |
 | ELECROW physical validation | HARDWARE TEST PENDING | None | `hardware/validation_results.md` | Hardik to test |
 | Bedside APDS validation | HARDWARE TEST PENDING | None | `hardware/validation_results.md` | Hardik to test |
 | HA command-path validation | HARDWARE TEST PENDING | None | `hardware/validation_results.md` | Hardik to test |
 | VL53L4CD decision | DEFERRED v1 — Option B | Owner-recorded 2026-05-25 | `docs/vl53l4cd_support_verification.md`, `docs/01_PRD.md`, `docs/05_Backend_Schema.md` | v1 ships APDS-only bedside; revisit for v2 |
 | No sensor fusion compliance | IN PROGRESS | Roadmap constraints | Multiple | Maintain constraint |
-| Secrets safety | IN PROGRESS — `.gitignore` hardened in cleanup PR | Roadmap constraints | `.gitignore`, setup guide | Maintain constraint |
+| Secrets safety | DONE | `.gitignore` hardened in PR #25 | `.gitignore`, setup guide | Maintain constraint |
 
 ---
 
