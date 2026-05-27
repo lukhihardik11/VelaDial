@@ -270,9 +270,20 @@ Concept 01 (Minimal Thermostat) has been prototyped as a single-page UI concept 
 
 ---
 
+## UI Concept 02: SmartKnob-Inspired Arc Note
+
+**Date:** 2026-05-27  
+**Status:** Concept prototype YAML created and compile PASSED (ESPHome 2026.5.0, 361s, 0 errors)  
+**Validation Performed:** No  
+**Physical PASS Results Added:** No  
+
+Concept 02 (SmartKnob-Inspired Arc) has been prototyped as a single-page UI concept for the door-side ELECROW controller. The concept features a prominent SmartKnob-style arc widget spanning 270 degrees (135° to 45°) with an amber indicator and white knob handle for brightness visualization. The arc is visual-only (no touch drag) — all interaction flows through the physical rotary encoder (CW/CCW for brightness, press for power toggle). A large central percentage label doubles as a touch-to-toggle power button. Wake-only-first logic is enforced on all input paths (touch, knob CW/CCW, knob press). Home Assistant state import keeps the UI synchronized with `light.bedroom_group`. This is a concept exploration only — not production, not tested on physical hardware. Four documentation files (research.md, design_spec.md, implementation_notes.md, validation_notes.md) accompany the YAML.
+
+---
+
 ## Document control
 
-**Version:** 0.8 — Added Concept 01 Minimal Thermostat note; compile PASSED, no physical validation.  
+**Version:** 0.9 — Added Concept 02 SmartKnob-Inspired Arc note; compile PASSED, no physical validation.  
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
