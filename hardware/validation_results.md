@@ -281,9 +281,21 @@ Concept 02 (SmartKnob-Inspired Arc) has been prototyped as a single-page UI conc
 
 ---
 
+## UI Concept 03: Large Center Power Button Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_03_large_center_power.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 386s) |
+| Physical validation | NOT TESTED — awaiting Hardik physical validation input |
+
+Concept 03 (Large Center Power Button) has been prototyped as a 3-page UI concept for the door-side ELECROW controller. The concept features an oversized 140px glowing circular power button as the hero element on the Power page, with a brightness arc on Page 2 and a diamond-layout preset selector on Page 3. The power button uses LVGL shadow properties to create an amber glow halo when on, and a ghost outline when off. Wake-only-first logic is enforced on all input paths (touch, knob CW/CCW, knob press). LED ring mirrors the power state (amber when on, off when off). Home Assistant state import keeps the UI synchronized with `light.bedroom_group`. This is a concept exploration only — not production, not tested on physical hardware. Four documentation files (research.md, design_spec.md, implementation_notes.md, validation_notes.md) accompany the YAML.
+
+---
+
 ## Document control
 
-**Version:** 0.9 — Added Concept 02 SmartKnob-Inspired Arc note; compile PASSED, no physical validation.  
+**Version:** 0.10 — Added Concept 03 Large Center Power Button note; compile PASSED, no physical validation.  
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
