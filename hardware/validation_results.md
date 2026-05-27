@@ -293,9 +293,22 @@ Concept 03 (Large Center Power Button) has been prototyped as a 3-page UI concep
 
 ---
 
+## UI Concept 04: Single-Page Simple Mode Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_04_single_page_simple.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 374s) |
+| Gate G1 status | **FAILS** — uses 1 page instead of mandated 3 |
+| Physical validation | NOT TESTED — awaiting Hardik physical validation input |
+
+Concept 04 (Single-Page Simple Mode) has been prototyped as a single-page UI concept for the door-side ELECROW controller. The concept places ALL controls on one screen: power state in the top band (tap to toggle), brightness percentage with thin arc in the center band (knob-only control), and active preset name in the bottom band (tap to cycle through 4 presets). This is the most radical simplification in the 20-concept matrix — no page navigation, no swipe gestures, no page indicator dots. Wake-only-first logic is enforced on all input paths. **This concept FAILS Gate G1 (Three-Page Lock) and cannot be selected for production without explicit owner waiver.** This is a concept exploration only — not production, not tested on physical hardware.
+
+---
+
 ## Document control
 
-**Version:** 0.10 — Added Concept 03 Large Center Power Button note; compile PASSED, no physical validation.  
+**Version:** 0.11 — Added Concept 04 Single-Page Simple Mode note; compile PASSED, FAILS Gate G1, no physical validation.  
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
