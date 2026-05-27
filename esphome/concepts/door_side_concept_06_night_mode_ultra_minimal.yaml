@@ -1,0 +1,766 @@
+# ==============================================================================
+# VELA DIAL - DOOR-SIDE CONTROLLER (CONCEPT 06: NIGHT MODE ULTRA-MINIMAL)
+# ==============================================================================
+# CONCEPT PROTOTYPE / NOT PRODUCTION
+# This YAML implements UI Concept 06 (Night Mode Ultra-Minimal).
+# It is designed for the ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display.
+#
+# COMPILE STATUS: PASSED (ESPHome 2026.5.0, ESP-IDF, 0 errors, 86s incremental)
+#
+# Key Features:
+# - Night Mode layer: single dot (lights off) or dim value (lights on)
+# - Ambient light sensor driven (TSL2591 simulated via template for compile)
+# - Backlight drops to 10% PWM in Night Mode
+# - ALL inputs in Night Mode are wake-only (no action executed)
+# - 4-page architecture: Night, Power, Brightness, Presets
+# - Hysteresis: enter < 5 lux (10s), exit > 15 lux (5s)
+# - Targets light.bedroom_group
+#
+# NOTE: This is a LAYER concept — designed to overlay on any primary concept.
+# The "normal UI" pages here are simplified placeholders.
+# ==============================================================================
+
+substitutions:
+  device_name: "veladial-door-concept06"
+  friendly_name: "VelaDial Door Concept 06"
+  light_group: light.bedroom_group
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: false
+  platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.esp-idf.memory_type: qio_opi
+    board_build.flash_mode: dio
+  project:
+    name: "veladial.door_concept06"
+    version: "0.1.0"
+  on_boot:
+    priority: 800
+    then:
+      - logger.log: "VelaDial Concept 06 boot"
+      - light.turn_on:
+          id: back_light
+          brightness: 80%
+      - delay: 200ms
+      - script.execute: sleep_timer
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+    version: recommended
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+# ------------------------------------------------------------------------------
+# SECRETS & CORE COMPONENTS
+# ------------------------------------------------------------------------------
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "VelaDial Door Fallback"
+    password: !secret ap_password
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+logger:
+  level: DEBUG
+
+# ------------------------------------------------------------------------------
+# GLOBALS (STATE TRACKING)
+# ------------------------------------------------------------------------------
+globals:
+  - id: display_awake
+    type: bool
+    restore_value: false
+    initial_value: 'true'
+  - id: touch_woke_this_cycle
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    restore_value: true
+    initial_value: '50'
+  - id: light_is_on
+    type: bool
+    restore_value: true
+    initial_value: 'false'
+  - id: current_page
+    type: int
+    restore_value: false
+    initial_value: '1'
+  - id: night_mode_active
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: dark_start_ms
+    type: unsigned long
+    restore_value: false
+    initial_value: '0'
+  - id: light_start_ms
+    type: unsigned long
+    restore_value: false
+    initial_value: '0'
+  - id: last_active_page
+    type: int
+    restore_value: false
+    initial_value: '1'
+
+# ------------------------------------------------------------------------------
+# HARDWARE CONFIGURATION (ELECROW 1.28" ESP32-S3)
+# ------------------------------------------------------------------------------
+spi:
+  clk_pin: GPIO10
+  mosi_pin: GPIO11
+  miso_pin: GPIO12
+
+display:
+  - platform: ili9xxx
+    id: round_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+    transform:
+      mirror_x: false
+      mirror_y: true
+      swap_xy: true
+
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO46
+    frequency: 1000Hz
+
+light:
+  - platform: monochromatic
+    id: back_light
+    output: backlight_pwm
+    name: "Display Backlight"
+    restore_mode: ALWAYS_ON
+
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    pin: GPIO48
+    num_leds: 5
+    rgb_order: GRB
+    chipset: WS2812
+    name: "LED Ring"
+
+i2c:
+  sda: GPIO6
+  scl: GPIO7
+  scan: true
+
+touchscreen:
+  - platform: cst816
+    id: touch
+    interrupt_pin: GPIO5
+    reset_pin: GPIO13
+    display: round_display
+    transform:
+      mirror_x: false
+      mirror_y: true
+      swap_xy: true
+    on_touch:
+      - lambda: |-
+          // Night Mode wake
+          if (id(night_mode_active)) {
+            id(wake_from_night).execute();
+            return;
+          }
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+            id(back_light).turn_on().set_brightness(0.8).perform();
+            id(sleep_timer).execute();
+          } else {
+            id(sleep_timer).execute();
+          }
+
+# ------------------------------------------------------------------------------
+# FONTS
+# ------------------------------------------------------------------------------
+font:
+  - file: "gfonts://Roboto"
+    id: roboto48
+    size: 48
+    glyphs: "0123456789%"
+  - file: "gfonts://Roboto"
+    id: roboto24
+    size: 24
+  - file: "gfonts://Roboto"
+    id: roboto16
+    size: 16
+
+# ------------------------------------------------------------------------------
+# SENSORS
+# ------------------------------------------------------------------------------
+sensor:
+  # Simulated ambient light sensor for compile (replace with real TSL2591 on hardware)
+  - platform: template
+    id: ambient_light
+    name: "Ambient Lux"
+    unit_of_measurement: "lx"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: 'return 50.0;'
+    on_value:
+      then:
+        - script.execute: check_night_mode
+
+  # Rotary encoder
+  - platform: rotary_encoder
+    id: knob
+    name: "Encoder"
+    pin_a:
+      number: GPIO45
+      mode:
+        input: true
+        pullup: true
+    pin_b:
+      number: GPIO42
+      mode:
+        input: true
+        pullup: true
+    resolution: 2
+    on_clockwise:
+      - lambda: |-
+          // Night Mode wake
+          if (id(night_mode_active)) {
+            id(wake_from_night).execute();
+            return;
+          }
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(back_light).turn_on().set_brightness(0.8).perform();
+            id(sleep_timer).execute();
+            return;
+          }
+          id(sleep_timer).execute();
+          // Page 1 (Power): navigate to Brightness
+          if (id(current_page) == 1) {
+            id(current_page) = 2;
+            id(show_brightness_page).execute();
+          }
+          // Page 2 (Brightness): increase brightness
+          else if (id(current_page) == 2) {
+            if (id(brightness_pct) < 100) {
+              id(brightness_pct) += 5;
+              if (id(brightness_pct) > 100) id(brightness_pct) = 100;
+              id(update_brightness_ui).execute();
+            }
+          }
+          // Page 3 (Presets): no action for this prototype
+          else if (id(current_page) == 3) {
+            // placeholder
+          }
+    on_anticlockwise:
+      - lambda: |-
+          // Night Mode wake
+          if (id(night_mode_active)) {
+            id(wake_from_night).execute();
+            return;
+          }
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(back_light).turn_on().set_brightness(0.8).perform();
+            id(sleep_timer).execute();
+            return;
+          }
+          id(sleep_timer).execute();
+          // Page 1 (Power): navigate to Presets
+          if (id(current_page) == 1) {
+            id(current_page) = 3;
+            id(show_presets_page).execute();
+          }
+          // Page 2 (Brightness): decrease brightness
+          else if (id(current_page) == 2) {
+            if (id(brightness_pct) > 5) {
+              id(brightness_pct) -= 5;
+              if (id(brightness_pct) < 5) id(brightness_pct) = 5;
+              id(update_brightness_ui).execute();
+            }
+          }
+          // Page 3 (Presets): no action for this prototype
+          else if (id(current_page) == 3) {
+            // placeholder
+          }
+
+binary_sensor:
+  - platform: gpio
+    id: knob_button
+    name: "Knob Button"
+    pin:
+      number: GPIO41
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+    on_press:
+      - lambda: |-
+          // Night Mode wake
+          if (id(night_mode_active)) {
+            id(wake_from_night).execute();
+            return;
+          }
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(back_light).turn_on().set_brightness(0.8).perform();
+            id(sleep_timer).execute();
+            return;
+          }
+          id(sleep_timer).execute();
+          // Page 1 (Power): toggle power
+          if (id(current_page) == 1) {
+            id(toggle_power).execute();
+          }
+          // Page 2 (Brightness): navigate back to Power
+          else if (id(current_page) == 2) {
+            id(current_page) = 1;
+            id(show_power_page).execute();
+          }
+          // Page 3 (Presets): navigate back to Power
+          else if (id(current_page) == 3) {
+            id(current_page) = 1;
+            id(show_power_page).execute();
+          }
+
+# ------------------------------------------------------------------------------
+# SCRIPTS
+# ------------------------------------------------------------------------------
+script:
+  - id: sleep_timer
+    mode: restart
+    then:
+      - delay: 60s
+      - lambda: |-
+          id(display_awake) = false;
+          id(touch_woke_this_cycle) = false;
+          // If dark, enter Night Mode instead of full sleep
+          if (id(ambient_light).state < 5.0f) {
+            id(enter_night_mode).execute();
+          } else {
+            id(back_light).turn_on().set_brightness(0.1).perform();
+          }
+
+  - id: check_night_mode
+    then:
+      - lambda: |-
+          float lux = id(ambient_light).state;
+          unsigned long now = millis();
+          if (lux < 5.0f) {
+            id(light_start_ms) = 0;
+            if (id(dark_start_ms) == 0) {
+              id(dark_start_ms) = now;
+            } else if ((now - id(dark_start_ms) > 10000) && !id(night_mode_active) && !id(display_awake)) {
+              id(enter_night_mode).execute();
+            }
+          } else if (lux > 15.0f) {
+            id(dark_start_ms) = 0;
+            if (id(light_start_ms) == 0) {
+              id(light_start_ms) = now;
+            } else if ((now - id(light_start_ms) > 5000) && id(night_mode_active)) {
+              id(wake_from_night).execute();
+            }
+          } else {
+            id(dark_start_ms) = 0;
+            id(light_start_ms) = 0;
+          }
+
+  - id: enter_night_mode
+    then:
+      - lambda: |-
+          id(night_mode_active) = true;
+          id(last_active_page) = id(current_page);
+      - light.turn_on:
+          id: back_light
+          brightness: 10%
+          transition_length: 2s
+      - lvgl.page.show: night_page
+      - lambda: |-
+          // Update night page content based on light state
+          if (id(light_is_on)) {
+            // Show dim percentage, hide dot
+            lv_obj_add_flag(id(night_dot), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(id(night_value), LV_OBJ_FLAG_HIDDEN);
+          } else {
+            // Show dot, hide value
+            lv_obj_clear_flag(id(night_dot), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(id(night_value), LV_OBJ_FLAG_HIDDEN);
+          }
+      - light.turn_off:
+          id: led_ring
+
+  - id: wake_from_night
+    then:
+      - lambda: |-
+          id(night_mode_active) = false;
+          id(display_awake) = true;
+      - light.turn_on:
+          id: back_light
+          brightness: 80%
+          transition_length: 500ms
+      - lambda: |-
+          int page = id(last_active_page);
+          id(current_page) = page;
+      - if:
+          condition:
+            lambda: 'return id(last_active_page) == 1;'
+          then:
+            - lvgl.page.show: power_page
+      - if:
+          condition:
+            lambda: 'return id(last_active_page) == 2;'
+          then:
+            - lvgl.page.show: brightness_page
+      - if:
+          condition:
+            lambda: 'return id(last_active_page) == 3;'
+          then:
+            - lvgl.page.show: presets_page
+      - script.execute: sleep_timer
+
+  - id: toggle_power
+    then:
+      - lambda: |-
+          id(light_is_on) = !id(light_is_on);
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - light.turn_on:
+                id: led_ring
+                red: 100%
+                green: 65%
+                blue: 0%
+            - lvgl.label.update:
+                id: power_label
+                text: "ON"
+                text_color: 0xFFA500
+          else:
+            - light.turn_off:
+                id: led_ring
+            - lvgl.label.update:
+                id: power_label
+                text: "OFF"
+                text_color: 0x888888
+      - homeassistant.service:
+          service: light.toggle
+          data:
+            entity_id: ${light_group}
+
+  - id: update_brightness_ui
+    mode: restart
+    then:
+      - lvgl.label.update:
+          id: brightness_label
+          text: !lambda |-
+            static char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+            return buf;
+      - delay: 200ms
+      - homeassistant.service:
+          service: light.turn_on
+          data_template:
+            entity_id: "${light_group}"
+            brightness_pct: "{{ id(brightness_pct) }}"
+
+  - id: show_power_page
+    then:
+      - lvgl.page.show: power_page
+
+  - id: show_brightness_page
+    then:
+      - lvgl.page.show: brightness_page
+
+  - id: show_presets_page
+    then:
+      - lvgl.page.show: presets_page
+
+# ------------------------------------------------------------------------------
+# HOME ASSISTANT STATE IMPORT
+# ------------------------------------------------------------------------------
+text_sensor:
+  - platform: homeassistant
+    id: ha_light_state
+    entity_id: ${light_group}
+    on_value:
+      then:
+        - lambda: |-
+            if (x == "on") {
+              id(light_is_on) = true;
+            } else {
+              id(light_is_on) = false;
+            }
+        - if:
+            condition:
+              lambda: 'return id(night_mode_active);'
+            then:
+              # Update Night Mode display
+              - lambda: |-
+                  if (id(light_is_on)) {
+                    lv_obj_add_flag(id(night_dot), LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_clear_flag(id(night_value), LV_OBJ_FLAG_HIDDEN);
+                  } else {
+                    lv_obj_clear_flag(id(night_dot), LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_add_flag(id(night_value), LV_OBJ_FLAG_HIDDEN);
+                  }
+
+  - platform: homeassistant
+    id: ha_light_brightness
+    entity_id: ${light_group}
+    attribute: brightness
+    on_value:
+      then:
+        - lambda: |-
+            if (x.length() > 0) {
+              int b = (int)(atof(x.c_str()) * 100.0 / 255.0);
+              if (b < 1) b = 1;
+              if (b > 100) b = 100;
+              id(brightness_pct) = b;
+            }
+        - lvgl.label.update:
+            id: brightness_label
+            text: !lambda |-
+              static char buf[8];
+              snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+              return buf;
+        - if:
+            condition:
+              lambda: 'return id(night_mode_active);'
+            then:
+              - lvgl.label.update:
+                  id: night_value
+                  text: !lambda |-
+                    static char buf[8];
+                    snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+                    return buf;
+
+# ------------------------------------------------------------------------------
+# LVGL UI DEFINITION
+#
+# 4-page architecture: Night Mode, Power, Brightness, Presets
+# Night Mode page is the ultra-minimal dark-room state.
+# Normal pages are simplified placeholders for this layer concept.
+# WAKE-ONLY-FIRST: resume_on_input is FALSE.
+# ------------------------------------------------------------------------------
+lvgl:
+  displays:
+    - round_display
+  touchscreens:
+    - touchscreen_id: touch
+  default_font: roboto24
+  color_depth: 16
+  buffer_size: 25%
+  resume_on_input: false
+
+  pages:
+    # ========================================================================
+    # PAGE 0: NIGHT MODE — Ultra-minimal dark-room state
+    # ========================================================================
+    - id: night_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # Night dot — visible when lights OFF
+        - obj:
+            id: night_dot
+            align: CENTER
+            width: 8
+            height: 8
+            radius: 4
+            bg_color: 0xFFA500
+            bg_opa: 30%
+            border_width: 0
+
+        # Night value — visible when lights ON
+        - label:
+            id: night_value
+            align: CENTER
+            text_font: roboto24
+            text_color: 0xFFA500
+            text: "50%"
+
+    # ========================================================================
+    # PAGE 1: POWER — Simplified placeholder
+    # ========================================================================
+    - id: power_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      on_load:
+        - lambda: 'id(current_page) = 1;'
+      widgets:
+        - label:
+            id: power_label
+            align: CENTER
+            y: -10
+            text_font: roboto48
+            text_color: 0x888888
+            text: "OFF"
+
+        - label:
+            align: CENTER
+            y: 40
+            text_font: roboto16
+            text_color: 0x666666
+            text: "Tap knob to toggle"
+
+        # Page indicator dots
+        - obj:
+            align: BOTTOM_MID
+            y: -15
+            width: 40
+            height: 8
+            bg_opa: TRANSP
+            border_width: 0
+            widgets:
+              - obj:
+                  x: 0
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0xFFA500
+                  border_width: 0
+              - obj:
+                  x: 16
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+              - obj:
+                  x: 32
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+
+    # ========================================================================
+    # PAGE 2: BRIGHTNESS — Simplified placeholder
+    # ========================================================================
+    - id: brightness_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      on_load:
+        - lambda: 'id(current_page) = 2;'
+      widgets:
+        - label:
+            id: brightness_label
+            align: CENTER
+            text_font: roboto48
+            text_color: 0xFFFFFF
+            text: "50%"
+
+        # Page indicator dots
+        - obj:
+            align: BOTTOM_MID
+            y: -15
+            width: 40
+            height: 8
+            bg_opa: TRANSP
+            border_width: 0
+            widgets:
+              - obj:
+                  x: 0
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+              - obj:
+                  x: 16
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0xFFA500
+                  border_width: 0
+              - obj:
+                  x: 32
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+
+    # ========================================================================
+    # PAGE 3: PRESETS — Simplified placeholder
+    # ========================================================================
+    - id: presets_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      on_load:
+        - lambda: 'id(current_page) = 3;'
+      widgets:
+        - label:
+            align: CENTER
+            text_font: roboto24
+            text_color: 0xFFFFFF
+            text: "Presets"
+
+        - label:
+            align: CENTER
+            y: 30
+            text_font: roboto16
+            text_color: 0x888888
+            text: "Placeholder page"
+
+        # Page indicator dots
+        - obj:
+            align: BOTTOM_MID
+            y: -15
+            width: 40
+            height: 8
+            bg_opa: TRANSP
+            border_width: 0
+            widgets:
+              - obj:
+                  x: 0
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+              - obj:
+                  x: 16
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+              - obj:
+                  x: 32
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0xFFA500
+                  border_width: 0
