@@ -306,9 +306,22 @@ Concept 04 (Single-Page Simple Mode) has been prototyped as a single-page UI con
 
 ---
 
+## UI Concept 05: Preset Ring UI Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_05_preset_ring.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 378s) |
+| Gate status | **PASSES all gates (G1-G8)** |
+| Physical validation | NOT TESTED |
+
+Concept 05 (Preset Ring UI) uses 4 colored arc segments around the ring as a preset selector on the Presets page. The ring metaphor unifies all 3 pages: full ring (power), proportional arc (brightness), segmented ring (presets). Knob rotation cycles through presets; press applies. LED ring mirrors preset color. Wake-only-first enforced.
+
+---
+
 ## Document control
 
-**Version:** 0.11 — Added Concept 04 Single-Page Simple Mode note; compile PASSED, FAILS Gate G1, no physical validation.  
+**Version:** 0.12 — Added Concepts 04-05 notes; both compile PASSED, no physical validation.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
