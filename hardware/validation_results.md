@@ -386,9 +386,22 @@ Concept 10 (Three-Screen Tab Carousel) is the direct, literal implementation of 
 
 ---
 
+## UI Concept 11: Brightness-First UI Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_11_brightness_first_ui.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 429s) |
+| Gate status | **PASSES all gates (G1-G8)** — IA innovation |
+| Physical validation | NOT TESTED |
+
+Concept 11 (Brightness-First UI) is architecturally identical to Concept 10 with one critical information architecture change: the default landing page is Brightness (page 0) instead of Power. The hypothesis is that "adjust brightness" is the most common bedroom action — especially at night. Users wake the device and immediately see the current brightness level and can rotate the knob to adjust without any page navigation. Knob press on the Brightness page is a power toggle shortcut, making the two most common actions (adjust brightness, toggle power) accessible without any swipe. Zero compile errors on first attempt. Page order: Brightness → Power → Presets.
+
+---
+
 ## Document control
 
-**Version:** 0.17 — Added Concept 10 Three-Screen Tab Carousel note; compile PASSED, direct v1 spec implementation, zero errors on first attempt.
+**Version:** 0.18 — Added Concept 11 Brightness-First UI note; compile PASSED, IA innovation (brightness as default landing), zero errors on first attempt.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
