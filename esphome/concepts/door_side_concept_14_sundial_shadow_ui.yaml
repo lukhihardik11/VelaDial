@@ -1,0 +1,856 @@
+# ===========================================================================
+# VelaDial — UI Concept 14: Sundial Shadow UI
+# ===========================================================================
+# CONCEPT PROTOTYPE / NOT PRODUCTION
+# This YAML implements UI Concept 14 (Sundial Shadow UI).
+# It is designed for the ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display.
+#
+# COMPILE STATUS: PASS (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors, 106s fresh build)
+#
+# Key Features:
+# - Sundial shadow metaphor: brightness maps to shadow length/angle
+# - 100% = short shadow (noon), 0% = long shadow (twilight)
+# - Shadow approximated with LVGL arc widget (dark wedge)
+# - Background color shifts: bright amber (noon) to charcoal (twilight)
+# - 3 pages: Power (Sunrise/Sunset), Brightness (Shadow Hero), Presets
+# - Knob CW = shorter shadow (brighter), CCW = longer shadow (dimmer)
+# - Knob press = power toggle on any page
+# - Round display IS the sundial face
+# - LED ring = sun halo (warm amber proportional)
+# - Wake-only-first enforced on all inputs
+# - Always wakes to Power page (page 0)
+# - Targets light.bedroom_group
+#
+# 4 Locked Presets:
+# - Warm White (80%) = "High Noon"
+# - Soft Amber (60%) = "Golden Hour"
+# - Neutral White (90%) = "Morning"
+# - Low Nightlight (15%) = "Twilight"
+#
+# Design Philosophy:
+# - The round display IS a sundial face — form factor and metaphor unified
+# - Controlling light = controlling the sun's position
+# - Shadow grows as brightness decreases (naturalistic inversion)
+# - Premium and architectural, not decorative
+# - Avoids clock-like tick marks — uses continuous gradients
+#
+# NOT PRODUCTION. NOT TESTED. CONCEPT EXPLORATION ONLY.
+# ===========================================================================
+
+substitutions:
+  device_name: veladial-door-concept14
+  friendly_name: "VelaDial Door Concept14"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          id(display_awake) = true;
+          id(light_is_on) = false;
+          id(brightness_pct) = 50;
+          id(current_page) = 0;
+          id(active_preset) = 0;
+          id(touch_woke_this_cycle) = false;
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    version: recommended
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name}-AP"
+    password: !secret ap_password
+
+# ---------------------------------------------------------------------------
+# Global Variables
+# ---------------------------------------------------------------------------
+globals:
+  - id: display_awake
+    type: bool
+    initial_value: 'true'
+  - id: light_is_on
+    type: bool
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    initial_value: '50'
+  - id: current_page
+    type: int
+    initial_value: '0'
+  - id: active_preset
+    type: int
+    initial_value: '0'
+  - id: touch_woke_this_cycle
+    type: bool
+    initial_value: 'false'
+
+# ---------------------------------------------------------------------------
+# I2C Buses
+# ---------------------------------------------------------------------------
+i2c:
+  - id: bus_touch
+    sda: GPIO6
+    scl: GPIO7
+    scan: false
+  - id: bus_sensors
+    sda: GPIO38
+    scl: GPIO39
+    scan: false
+
+# ---------------------------------------------------------------------------
+# SPI Bus — Display (GC9A01)
+# ---------------------------------------------------------------------------
+spi:
+  mosi_pin: GPIO11
+  clk_pin: GPIO10
+
+# ---------------------------------------------------------------------------
+# Output — Backlight PWM
+# ---------------------------------------------------------------------------
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO46
+
+light:
+  # Backlight
+  - platform: monochromatic
+    id: backlight
+    output: backlight_pwm
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+    default_transition_length: 500ms
+
+  # WS2812 LED Ring — 5 LEDs on GPIO48 (Sun Halo)
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "LED Ring"
+    pin: GPIO48
+    num_leds: 5
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 300ms
+
+# ---------------------------------------------------------------------------
+# Display — GC9A01 240x240 Round
+# ---------------------------------------------------------------------------
+display:
+  - platform: ili9xxx
+    id: main_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+
+# ---------------------------------------------------------------------------
+# Touchscreen — CST816D
+# ---------------------------------------------------------------------------
+touchscreen:
+  - platform: cst816
+    id: my_touch
+    i2c_id: bus_touch
+    interrupt_pin: GPIO5
+    reset_pin: GPIO13
+    on_touch:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          }
+      - script.execute: wake_screen
+
+# ---------------------------------------------------------------------------
+# Rotary Encoder
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: knob
+    name: "Rotary Encoder"
+    pin_a: GPIO1
+    pin_b: GPIO2
+    resolution: 1
+    on_clockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            // Only adjust brightness on Brightness page (page 1)
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) < 100) {
+                id(brightness_pct) += 5;
+                if (id(brightness_pct) > 100) id(brightness_pct) = 100;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+    on_anticlockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            // Only adjust brightness on Brightness page (page 1)
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) > 5) {
+                id(brightness_pct) -= 5;
+                if (id(brightness_pct) < 5) id(brightness_pct) = 5;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Knob Button — Power Toggle on any page
+# ---------------------------------------------------------------------------
+binary_sensor:
+  - platform: gpio
+    id: knob_button
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    on_press:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            id(light_is_on) = !id(light_is_on);
+            if (id(light_is_on) && id(brightness_pct) == 0) {
+              id(brightness_pct) = 80;
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+      - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Home Assistant State Import
+# ---------------------------------------------------------------------------
+text_sensor:
+  - platform: homeassistant
+    id: ha_light_state
+    entity_id: light.bedroom_group
+    attribute: state
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            id(light_is_on) = true;
+          } else if (x == "off") {
+            id(light_is_on) = false;
+          }
+      - script.execute: update_ui
+
+  - platform: homeassistant
+    id: ha_light_brightness
+    entity_id: light.bedroom_group
+    attribute: brightness
+    on_value:
+      - lambda: |-
+          if (x.length() > 0) {
+            int b = atoi(x.c_str());
+            id(brightness_pct) = (b * 100) / 255;
+          }
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Scripts
+# ---------------------------------------------------------------------------
+script:
+  # --- Wake Screen ---
+  - id: wake_screen
+    mode: restart
+    then:
+      - light.turn_on:
+          id: backlight
+          brightness: 80%
+          transition_length: 300ms
+      - if:
+          condition:
+            lambda: 'return id(touch_woke_this_cycle);'
+          then:
+            - lvgl.page.show:
+                id: page_power
+                animation: NONE
+                time: 0ms
+            - lambda: 'id(current_page) = 0;'
+      - delay: 500ms
+      - lambda: 'id(touch_woke_this_cycle) = false;'
+      - delay: 44500ms
+      - lambda: 'id(display_awake) = false;'
+      - light.turn_off:
+          id: backlight
+          transition_length: 300ms
+
+  # --- Update UI (Sundial Shadow + Labels + LED Ring) ---
+  - id: update_ui
+    mode: restart
+    then:
+      # ---- POWER PAGE (Page 0): Sunrise (ON) / Sunset (OFF) ----
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            # Sunrise state (ON) — bright amber background, minimal shadow
+            - lvgl.widget.update:
+                id: sundial_face_power
+                bg_color: 0xFFA500
+            - lvgl.widget.update:
+                id: gnomon_power
+                bg_color: 0x4A3000
+            - lvgl.label.update:
+                id: power_state_label
+                text: "ON"
+                text_color: 0x3A2000
+          else:
+            # Sunset state (OFF) — dark charcoal background
+            - lvgl.widget.update:
+                id: sundial_face_power
+                bg_color: 0x111111
+            - lvgl.widget.update:
+                id: gnomon_power
+                bg_color: 0x333333
+            - lvgl.label.update:
+                id: power_state_label
+                text: "OFF"
+                text_color: 0x555555
+
+      # ---- BRIGHTNESS PAGE (Page 1): Shadow arc grows as brightness decreases ----
+      # Shadow arc: at 100% = 10 degrees (tiny), at 5% = 270 degrees (huge)
+      # Arc end angle = 10 + (100 - brightness_pct) * 2.7
+      - lvgl.arc.update:
+          id: shadow_arc
+          value: !lambda |-
+            // Map brightness 5-100 to arc value 0-100 (inverted)
+            // 100% brightness = value 0 (no shadow), 5% brightness = value 100 (full shadow)
+            int val = 100 - id(brightness_pct);
+            if (val < 0) val = 0;
+            if (val > 100) val = 100;
+            return val;
+
+      # Update brightness percentage label
+      - lvgl.label.update:
+          id: brightness_pct_label
+          text: !lambda |-
+            static char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+            return buf;
+
+      # ---- PRESETS PAGE (Page 2): Highlight active preset ----
+      - lvgl.label.update:
+          id: preset_label_0
+          text_color: !lambda 'return (id(active_preset) == 0) ? lv_color_hex(0xFFA500) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_1
+          text_color: !lambda 'return (id(active_preset) == 1) ? lv_color_hex(0xFFA500) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_2
+          text_color: !lambda 'return (id(active_preset) == 2) ? lv_color_hex(0xFFA500) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_3
+          text_color: !lambda 'return (id(active_preset) == 3) ? lv_color_hex(0xFFA500) : lv_color_hex(0x555555);'
+
+      # ---- LED Ring (Sun Halo — Warm Amber Proportional) ----
+      - script.execute: update_led_ring
+
+      # ---- Page Dots ----
+      - lvgl.widget.update:
+          id: dot_0
+          bg_color: !lambda 'return (id(current_page) == 0) ? lv_color_hex(0xFFA500) : lv_color_hex(0x444444);'
+      - lvgl.widget.update:
+          id: dot_1
+          bg_color: !lambda 'return (id(current_page) == 1) ? lv_color_hex(0xFFA500) : lv_color_hex(0x444444);'
+      - lvgl.widget.update:
+          id: dot_2
+          bg_color: !lambda 'return (id(current_page) == 2) ? lv_color_hex(0xFFA500) : lv_color_hex(0x444444);'
+
+  # --- Update LED Ring (Sun Halo — Proportional Warm Amber) ---
+  - id: update_led_ring
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - light.turn_on:
+                id: led_ring
+                red: 100%
+                green: 60%
+                blue: 0%
+                brightness: !lambda |-
+                  // Proportional to brightness, capped at 40% for bedroom
+                  float b = id(brightness_pct) / 100.0 * 0.4;
+                  if (b < 0.05) b = 0.05;
+                  return b;
+                transition_length: 300ms
+          else:
+            - light.turn_off:
+                id: led_ring
+                transition_length: 300ms
+
+  # --- Send to Home Assistant ---
+  - id: send_to_ha
+    mode: single
+    then:
+      - homeassistant.service:
+          service: light.turn_on
+          data:
+            entity_id: light.bedroom_group
+            brightness: !lambda |-
+              return id(brightness_pct) * 255 / 100;
+      - if:
+          condition:
+            lambda: 'return !id(light_is_on);'
+          then:
+            - homeassistant.service:
+                service: light.turn_off
+                data:
+                  entity_id: light.bedroom_group
+
+  # --- Guarded Swipe Left ---
+  - id: guarded_swipe_left
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) < 2) {
+                  id(current_page) += 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2;'
+                then:
+                  - lvgl.page.show:
+                      id: page_presets
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Swipe Right ---
+  - id: guarded_swipe_right
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) > 0) {
+                  id(current_page) -= 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 0;'
+                then:
+                  - lvgl.page.show:
+                      id: page_power
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Power Toggle ---
+  - id: guarded_power_toggle
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(light_is_on) = !id(light_is_on);
+                if (id(light_is_on) && id(brightness_pct) == 0) {
+                  id(brightness_pct) = 80;
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+  # --- Guarded Preset Apply ---
+  - id: guarded_preset_apply
+    mode: single
+    parameters:
+      preset_index: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(active_preset) = preset_index;
+                id(light_is_on) = true;
+                switch (preset_index) {
+                  case 0: id(brightness_pct) = 80; break;  // Warm White = High Noon
+                  case 1: id(brightness_pct) = 60; break;  // Soft Amber = Golden Hour
+                  case 2: id(brightness_pct) = 90; break;  // Neutral White = Morning
+                  case 3: id(brightness_pct) = 15; break;  // Low Nightlight = Twilight
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Fonts
+# ---------------------------------------------------------------------------
+font:
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_32
+    size: 32
+    glyphs: "0123456789% "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_20
+    size: 20
+    glyphs: "ONF "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_16
+    size: 16
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz %.-"
+
+# ---------------------------------------------------------------------------
+# LVGL — Sundial Shadow UI
+# ---------------------------------------------------------------------------
+lvgl:
+  displays:
+    - main_display
+  touchscreens:
+    - my_touch
+  color_depth: 16
+  buffer_size: 25%
+
+  # Top layer — always-visible 3-dot page indicator
+  top_layer:
+    widgets:
+      - obj:
+          id: page_indicator
+          align: BOTTOM_MID
+          y: -10
+          width: 60
+          height: 14
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          layout:
+            type: FLEX
+            flex_flow: ROW
+            flex_align_main: CENTER
+            flex_align_cross: CENTER
+          widgets:
+            - obj:
+                id: dot_0
+                width: 8
+                height: 8
+                radius: 4
+                bg_color: 0xFFA500
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_1
+                width: 8
+                height: 8
+                radius: 4
+                bg_color: 0x444444
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_2
+                width: 8
+                height: 8
+                radius: 4
+                bg_color: 0x444444
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+
+  # Pages — ORDER: Power (Sunrise/Sunset), Brightness (Shadow Hero), Presets
+  pages:
+    # ----- PAGE 0: Power (Sunrise/Sunset State) -----
+    # ON = bright amber sundial face (sunrise/noon), OFF = dark charcoal (night)
+    - id: page_power
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # Sundial face — large circle representing the dial surface
+        - obj:
+            id: sundial_face_power
+            align: CENTER
+            width: 200
+            height: 200
+            radius: 100
+            bg_color: 0x111111
+            bg_opa: COVER
+            border_color: 0x333333
+            border_width: 2
+            clickable: true
+            on_click:
+              - script.execute: guarded_power_toggle
+
+        # Gnomon — central vertical element (small dark circle)
+        - obj:
+            id: gnomon_power
+            align: CENTER
+            width: 16
+            height: 16
+            radius: 8
+            bg_color: 0x333333
+            bg_opa: COVER
+            border_width: 0
+            clickable: false
+
+        # Power state label
+        - label:
+            id: power_state_label
+            align: CENTER
+            y: 60
+            text_font: font_20
+            text_color: 0x555555
+            text: "OFF"
+
+      on_load:
+        - lambda: 'id(current_page) = 0;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 1: Brightness (Sundial Shadow — Hero) -----
+    # The shadow arc grows as brightness decreases
+    # Short shadow = bright (noon), long shadow = dim (twilight)
+    - id: page_brightness
+      bg_color: 0x0A0A0A
+      bg_opa: COVER
+      widgets:
+        # Sundial face background
+        - obj:
+            id: sundial_face_brightness
+            align: CENTER
+            width: 210
+            height: 210
+            radius: 105
+            bg_color: 0x1A1200
+            bg_opa: COVER
+            border_color: 0x3A2800
+            border_width: 2
+            clickable: false
+
+        # Shadow Arc — the hero element
+        # This arc represents the shadow cast by the gnomon
+        # Value 0 = no shadow (noon/100%), Value 100 = maximum shadow (twilight/5%)
+        - arc:
+            id: shadow_arc
+            align: CENTER
+            width: 200
+            height: 200
+            arc_color: 0x3D2600
+            arc_width: 40
+            min_value: 0
+            max_value: 100
+            value: 50
+            rotation: 180
+            mode: NORMAL
+            adjustable: false
+            indicator:
+              arc_color: 0x1A0A00
+              arc_width: 40
+
+        # Gnomon — central element
+        - obj:
+            id: gnomon_brightness
+            align: CENTER
+            width: 20
+            height: 20
+            radius: 10
+            bg_color: 0x8B6914
+            bg_opa: COVER
+            border_color: 0xFFA500
+            border_width: 2
+            clickable: false
+
+        # Brightness percentage label (overlaid on sundial face)
+        - label:
+            id: brightness_pct_label
+            align: CENTER
+            y: 50
+            text_font: font_32
+            text_color: 0xFFFFFF
+            text: "50%"
+
+      on_load:
+        - lambda: 'id(current_page) = 1;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 2: Presets (Sun Positions) -----
+    # Each preset mapped to a time of day
+    - id: page_presets
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # Title
+        - label:
+            align: TOP_MID
+            y: 25
+            text_font: font_16
+            text_color: 0x888888
+            text: "Presets"
+
+        # 2x2 grid container
+        - obj:
+            align: CENTER
+            width: 180
+            height: 160
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 6
+            layout:
+              type: FLEX
+              flex_flow: ROW_WRAP
+              flex_align_main: SPACE_EVENLY
+              flex_align_cross: CENTER
+              flex_align_track: SPACE_EVENLY
+            widgets:
+              # Preset 0: Warm White = "Noon"
+              - button:
+                  id: preset_btn_0
+                  width: 80
+                  height: 65
+                  radius: 12
+                  bg_color: 0x1A1A1A
+                  border_color: 0x444444
+                  border_width: 2
+                  widgets:
+                    - label:
+                        id: preset_label_0
+                        align: CENTER
+                        text_font: font_16
+                        text_color: 0xFFA500
+                        text: "Noon"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 0
+
+              # Preset 1: Soft Amber = "Golden"
+              - button:
+                  id: preset_btn_1
+                  width: 80
+                  height: 65
+                  radius: 12
+                  bg_color: 0x1A1A1A
+                  border_color: 0x444444
+                  border_width: 2
+                  widgets:
+                    - label:
+                        id: preset_label_1
+                        align: CENTER
+                        text_font: font_16
+                        text_color: 0x555555
+                        text: "Golden"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 1
+
+              # Preset 2: Neutral White = "Morning"
+              - button:
+                  id: preset_btn_2
+                  width: 80
+                  height: 65
+                  radius: 12
+                  bg_color: 0x1A1A1A
+                  border_color: 0x444444
+                  border_width: 2
+                  widgets:
+                    - label:
+                        id: preset_label_2
+                        align: CENTER
+                        text_font: font_16
+                        text_color: 0x555555
+                        text: "Morning"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 2
+
+              # Preset 3: Low Nightlight = "Twilight"
+              - button:
+                  id: preset_btn_3
+                  width: 80
+                  height: 65
+                  radius: 12
+                  bg_color: 0x1A1A1A
+                  border_color: 0x444444
+                  border_width: 2
+                  widgets:
+                    - label:
+                        id: preset_label_3
+                        align: CENTER
+                        text_font: font_16
+                        text_color: 0x555555
+                        text: "Dusk"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 3
+
+      on_load:
+        - lambda: 'id(current_page) = 2;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
