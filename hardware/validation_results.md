@@ -406,11 +406,20 @@ Concept 11 (Brightness-First UI) is architecturally identical to Concept 10 with
 
 Concept 12 (Door Switch Replacement) treats the device as a premium replacement for a bedroom wall switch. The Power page is the hero — a 230x230px circular touch target fills the entire display. ON state floods the screen with amber (0xFFA500), OFF shows a dark circle with a thin white border. The mental model is: "the entire device is the switch." Visible from the doorway — amber glow = lights on, dark = lights off. Knob press = power toggle on ALL pages (not just Power page). Guest-friendly: zero learning curve, no hidden gestures needed. LED ring at 50% max brightness for door-side visibility. Context-aware sleep: Power page sleeps after 30s (transient door-side use), other pages after 60s. First compile attempt failed due to transient network error downloading LVGL component; second attempt passed cleanly with 0 errors.
 
+### Concept 13: Lunar Phase Visualization
+
+| Item | Status |
+|------|--------|
+| Compile (ESPHome 2026.5.0) | PASSED (0 errors, 38s incremental) |
+| Physical validation | NOT TESTED |
+
+Concept 13 (Lunar Phase Visualization) uses a moon phase metaphor to represent brightness state. 100% brightness = full moon (amber disc fills the display), 0% = new moon (dark with a thin limb crescent). The terminator line is approximated using overlapping LVGL circles — a bright disc (the illuminated surface) and a dark disc (the shadow) whose horizontal offset maps to brightness percentage. This creates a waxing/waning visual as the knob rotates. The round display IS the moon — form factor and metaphor are unified. Page 1 (Power) shows full moon vs new moon. Page 2 (Brightness Hero) shows the phase with a semi-transparent percentage overlay. Page 3 (Presets) maps each preset to a named lunar phase: Warm White = Full Moon, Soft Amber = Waxing Gibbous, Neutral White = First Quarter, Low Nightlight = Crescent. LED ring mirrors moon state with proportional amber. Poetic and premium — designed for bedroom ambiance.
+
 ---
 
 ## Document control
 
-**Version:** 0.19 — Added Concept 12 Door Switch Replacement note; compile PASSED, full-screen power hero, guest-friendly, 0 errors.
+**Version:** 0.20 — Added Concept 13 Lunar Phase Visualization note; compile PASSED, moon phase metaphor, overlapping circles for terminator, 0 errors.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
