@@ -415,11 +415,20 @@ Concept 12 (Door Switch Replacement) treats the device as a premium replacement 
 
 Concept 13 (Lunar Phase Visualization) uses a moon phase metaphor to represent brightness state. 100% brightness = full moon (amber disc fills the display), 0% = new moon (dark with a thin limb crescent). The terminator line is approximated using overlapping LVGL circles — a bright disc (the illuminated surface) and a dark disc (the shadow) whose horizontal offset maps to brightness percentage. This creates a waxing/waning visual as the knob rotates. The round display IS the moon — form factor and metaphor are unified. Page 1 (Power) shows full moon vs new moon. Page 2 (Brightness Hero) shows the phase with a semi-transparent percentage overlay. Page 3 (Presets) maps each preset to a named lunar phase: Warm White = Full Moon, Soft Amber = Waxing Gibbous, Neutral White = First Quarter, Low Nightlight = Crescent. LED ring mirrors moon state with proportional amber. Poetic and premium — designed for bedroom ambiance.
 
+### Concept 14: Sundial Shadow UI
+
+| Item | Status |
+|------|--------|
+| Compile (ESPHome 2026.5.0) | PASSED (0 errors, 106s fresh build) |
+| Physical validation | NOT TESTED |
+
+Concept 14 (Sundial Shadow UI) maps brightness to the length of a shadow cast by a virtual gnomon at the center of the round display. At 100% brightness, the shadow is short (high noon). At 5%, the shadow is long (twilight). The shadow is approximated using an LVGL arc widget — a dark wedge whose angular span grows inversely with brightness. The background color shifts from warm amber (noon) to charcoal (twilight). Page 1 (Power) shows sunrise (ON) vs sunset (OFF) via the sundial face color. Page 2 (Brightness Hero) shows the shadow arc with a percentage overlay. Page 3 (Presets) maps each preset to a sun position: Warm White = Noon, Soft Amber = Golden Hour, Neutral White = Morning, Low Nightlight = Twilight. LED ring acts as a sun halo with proportional warm amber. Premium and architectural — connects electric light to natural light.
+
 ---
 
 ## Document control
 
-**Version:** 0.20 — Added Concept 13 Lunar Phase Visualization note; compile PASSED, moon phase metaphor, overlapping circles for terminator, 0 errors.
+**Version:** 0.21 — Added Concept 14 Sundial Shadow UI note; compile PASSED, shadow arc metaphor, architectural/premium, 0 errors.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
