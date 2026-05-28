@@ -191,7 +191,7 @@ The following tests must be completed and recorded as PASS before the system is 
 | Claude review package | DONE | PR #24 merged | `docs/review/claude_review_package.md` | Claude review completed |
 | UI concept direction package | DONE | PR #34 merged | `docs/ui/ui_concept_direction_matrix.md`, `docs/ui/ui_concept_shortlist.md`, `docs/ui/ui_concept_selection_criteria.md`, `docs/ui/ui_concept_notes.md`, `docs/ui/ui_visual_batch_plan.md`, `docs/ui/ui_implementation_candidates.md` | Completed |
 | UI concept prototype framework | DONE | PR #35 merged | `docs/ui/concepts/README.md`, `esphome/concepts/README.md` | Completed |
-| UI concept prototypes (1-20) | IN PROGRESS | Concepts 01-08 complete | `docs/ui/concepts/`, `esphome/concepts/` | Research and prototype all 20 concepts sequentially |
+| UI concept prototypes (1-20) | IN PROGRESS | Concepts 01-09 complete | `docs/ui/concepts/`, `esphome/concepts/` | Research and prototype all 20 concepts sequentially |
 | Concept 01: Minimal Thermostat | MERGED | PR #36 merged | `docs/ui/concepts/01_minimal_thermostat/`, `esphome/concepts/door_side_concept_01_minimal_thermostat.yaml` | Compile PASSED; merged |
 | Concept 02: SmartKnob-Inspired Arc | MERGED | PR #37 merged | `docs/ui/concepts/02_smartknob_arc/`, `esphome/concepts/door_side_concept_02_smartknob_arc.yaml` | Compile PASSED; merged |
 | Concept 03: Large Center Power Button | MERGED | PR #38 merged | `docs/ui/concepts/03_large_center_power_button/`, `esphome/concepts/door_side_concept_03_large_center_power.yaml` | Compile PASSED; merged |
@@ -199,7 +199,8 @@ The following tests must be completed and recorded as PASS before the system is 
 | Concept 05: Preset Ring UI | MERGED | PR #40 merged | `docs/ui/concepts/05_preset_ring_ui/`, `esphome/concepts/door_side_concept_05_preset_ring.yaml` | Compile PASSED; merged |
 | Concept 06: Night Mode Ultra-Minimal | MERGED | PR #41 merged | `docs/ui/concepts/06_night_mode_ultra_minimal/`, `esphome/concepts/door_side_concept_06_night_mode_ultra_minimal.yaml` | Compile PASSED; Layer concept; merged |
 | Concept 07: Text-First Utility | MERGED | PR #42 merged | `docs/ui/concepts/07_text_first_utility/`, `esphome/concepts/door_side_concept_07_text_first_utility.yaml` | Compile PASSED; v1 candidate; merged |
-| Concept 08: Apple Watch Complications | IN REVIEW | PR pending | `docs/ui/concepts/08_apple_watch_complications/`, `esphome/concepts/door_side_concept_08_apple_watch_complications.yaml` | Compile PASSED; NOT RECOMMENDED for v1; v1-expanded adaptation; Hardik to review |
+| Concept 08: Apple Watch Complications | MERGED | PR #43 merged | `docs/ui/concepts/08_apple_watch_complications/`, `esphome/concepts/door_side_concept_08_apple_watch_complications.yaml` | Compile PASSED; NOT RECOMMENDED for v1; v1-expanded adaptation; merged |
+| Concept 09: LED-Ring Status-First | IN REVIEW | PR pending | `docs/ui/concepts/09_led_ring_status_first/`, `esphome/concepts/door_side_concept_09_led_ring_status_first.yaml` | Compile PASSED; Layer concept; LED ring as primary feedback; Hardik to review |
 | Claude independent review | COMPLETED — REQUEST CHANGES | Review delivered to Hardik | n/a | Findings tracked via cleanup PR series |
 | Immediate cleanup PR | DONE | PR #25 merged | `.gitignore`, `hardware/validation_results.md`, `esphome/door_side_rotary.yaml`, `esphome/bedside_gesture.yaml`, `docs/MASTER_EXECUTION_ROADMAP.md` | Completed |
 | VL53L4CD decision recording | DONE | PR #26 merged | `docs/vl53l4cd_support_verification.md`, `docs/01_PRD.md`, `docs/05_Backend_Schema.md` | Option B recorded |
