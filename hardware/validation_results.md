@@ -345,9 +345,23 @@ Concept 07 (Text-First Utility) rejects all decorative elements. No arcs, rings,
 
 ---
 
+## UI Concept 08: Apple Watch Complications Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_08_apple_watch_complications.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 326s) |
+| Gate status | **PASSES all gates (G1-G8)** — v1-expanded adaptation only |
+| v1 Recommendation | **NOT RECOMMENDED** per direction matrix — too complex |
+| Physical validation | NOT TESTED |
+
+Concept 08 (Apple Watch Complications) borrows the watchOS Infograph "complications" metaphor: small data widgets at the top corners of each page showing ambient sensor data (WiFi RSSI top-left, ambient lux top-right). The v1-expanded adaptation uses only 2 complications per page in static gray, display-only (not interactive). The center content remains the hero element on each page. At 190 PPI (vs Apple Watch 326 PPI), information density is deliberately reduced. Full complication face with 4-6 interactive complications is v2 scope only.
+
+---
+
 ## Document control
 
-**Version:** 0.14 — Added Concept 07 Text-First Utility note; compile PASSED, v1 candidate, no physical validation.
+**Version:** 0.15 — Added Concept 08 Apple Watch Complications note; compile PASSED, NOT RECOMMENDED for v1, v1-expanded adaptation, no physical validation.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
