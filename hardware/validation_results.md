@@ -332,9 +332,22 @@ Concept 06 (Night Mode Ultra-Minimal) is a layer concept — the sleep/dark-room
 
 ---
 
+## UI Concept 07: Text-First Utility Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_07_text_first_utility.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 464s) |
+| Gate status | **PASSES all gates (G1-G8)** — v1 candidate |
+| Physical validation | NOT TESTED |
+
+Concept 07 (Text-First Utility) rejects all decorative elements. No arcs, rings, gradients, or glow effects. Every piece of information is communicated through typography alone: 56pt primary values (ON/OFF/percentage), 24pt preset names in a vertical list, 16pt section headers. The amber accent color is used only for active state and page dots. Design reference: Massimo Vignelli subway signage, aviation instrumentation. Best daylight readability of any concept in the matrix.
+
+---
+
 ## Document control
 
-**Version:** 0.13 — Added Concept 06 Night Mode Ultra-Minimal note; compile PASSED, layer concept, no physical validation.
+**Version:** 0.14 — Added Concept 07 Text-First Utility note; compile PASSED, v1 candidate, no physical validation.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
