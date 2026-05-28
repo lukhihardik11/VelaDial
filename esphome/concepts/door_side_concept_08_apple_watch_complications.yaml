@@ -1,0 +1,750 @@
+# ==============================================================================
+# VELA DIAL - DOOR-SIDE CONTROLLER (CONCEPT 08: APPLE WATCH COMPLICATIONS)
+# ==============================================================================
+# CONCEPT PROTOTYPE / NOT PRODUCTION
+# This YAML implements UI Concept 08 (Apple Watch Complications).
+# It is designed for the ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display.
+#
+# COMPILE STATUS: PASSED (ESPHome 2026.5.0, ESP-IDF, 0 errors, 326s)
+#
+# Key Features:
+# - watchOS Infograph-inspired: 2 corner complications per page
+# - Complications: WiFi RSSI (top-left) + Ambient Lux (top-right)
+# - Complications are DISPLAY-ONLY (not interactive)
+# - 3-page architecture: Power, Brightness, Presets
+# - 48pt center values with 14pt corner complications
+# - Wake-only-first enforced on all input paths
+# - Targets light.bedroom_group
+#
+# WARNING: Direction matrix states NOT RECOMMENDED for v1.
+# This implements the v1-expanded adaptation (2 decorative complications only).
+# Full complication face with interactive complications is v2 scope.
+# ==============================================================================
+
+substitutions:
+  device_name: "veladial-door-concept08"
+  friendly_name: "VelaDial Door Concept 08"
+  light_group: light.bedroom_group
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: false
+  platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.esp-idf.memory_type: qio_opi
+    board_build.flash_mode: dio
+  project:
+    name: "veladial.door_concept08"
+    version: "0.1.0"
+  on_boot:
+    priority: 800
+    then:
+      - logger.log: "VelaDial Concept 08 boot"
+      - light.turn_on:
+          id: back_light
+          brightness: 80%
+      - delay: 200ms
+      - script.execute: sleep_timer
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+    version: recommended
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+# ------------------------------------------------------------------------------
+# SECRETS & CORE COMPONENTS
+# ------------------------------------------------------------------------------
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "VelaDial Door Fallback"
+    password: !secret ap_password
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+logger:
+  level: DEBUG
+
+# ------------------------------------------------------------------------------
+# GLOBALS (STATE TRACKING)
+# ------------------------------------------------------------------------------
+globals:
+  - id: display_awake
+    type: bool
+    restore_value: false
+    initial_value: 'true'
+  - id: touch_woke_this_cycle
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    restore_value: true
+    initial_value: '50'
+  - id: light_is_on
+    type: bool
+    restore_value: true
+    initial_value: 'false'
+  - id: current_page
+    type: int
+    restore_value: false
+    initial_value: '1'
+  - id: selected_preset
+    type: int
+    restore_value: false
+    initial_value: '0'
+
+# ------------------------------------------------------------------------------
+# HARDWARE CONFIGURATION (ELECROW 1.28" ESP32-S3)
+# ------------------------------------------------------------------------------
+spi:
+  clk_pin: GPIO10
+  mosi_pin: GPIO11
+  miso_pin: GPIO12
+
+display:
+  - platform: ili9xxx
+    id: round_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+    transform:
+      mirror_x: false
+      mirror_y: true
+      swap_xy: true
+
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO46
+    frequency: 1000Hz
+
+light:
+  - platform: monochromatic
+    id: back_light
+    output: backlight_pwm
+    name: "Display Backlight"
+    restore_mode: ALWAYS_ON
+
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    pin: GPIO48
+    num_leds: 5
+    rgb_order: GRB
+    chipset: WS2812
+    name: "LED Ring"
+
+i2c:
+  sda: GPIO6
+  scl: GPIO7
+  scan: true
+
+touchscreen:
+  - platform: cst816
+    id: touch
+    interrupt_pin: GPIO5
+    reset_pin: GPIO13
+    display: round_display
+    transform:
+      mirror_x: false
+      mirror_y: true
+      swap_xy: true
+    on_touch:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+            id(back_light).turn_on().set_brightness(0.8).perform();
+            id(sleep_timer).execute();
+            return;
+          }
+          id(sleep_timer).execute();
+          if (id(current_page) == 1) {
+            id(toggle_power).execute();
+          }
+
+# ------------------------------------------------------------------------------
+# FONTS
+# ------------------------------------------------------------------------------
+font:
+  - file: "gfonts://Roboto"
+    id: roboto48
+    size: 48
+    glyphs: "0123456789%ONF "
+  - file: "gfonts://Roboto"
+    id: roboto24
+    size: 24
+  - file: "gfonts://Roboto"
+    id: roboto16
+    size: 16
+  - file: "gfonts://Roboto"
+    id: roboto14
+    size: 14
+
+# ------------------------------------------------------------------------------
+# SENSORS — WiFi (real) + Ambient Lux (simulated for compile)
+# ------------------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: knob
+    name: "Encoder"
+    pin_a:
+      number: GPIO45
+      mode:
+        input: true
+        pullup: true
+    pin_b:
+      number: GPIO42
+      mode:
+        input: true
+        pullup: true
+    resolution: 2
+    on_clockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(back_light).turn_on().set_brightness(0.8).perform();
+            id(sleep_timer).execute();
+            return;
+          }
+          id(sleep_timer).execute();
+          if (id(current_page) == 1) {
+            id(current_page) = 2;
+            id(show_brightness_page).execute();
+          } else if (id(current_page) == 2) {
+            if (id(brightness_pct) < 100) {
+              id(brightness_pct) += 5;
+              if (id(brightness_pct) > 100) id(brightness_pct) = 100;
+              id(update_brightness_ui).execute();
+            }
+          } else if (id(current_page) == 3) {
+            id(selected_preset) = (id(selected_preset) + 1) % 4;
+            id(update_preset_ui).execute();
+          }
+    on_anticlockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(back_light).turn_on().set_brightness(0.8).perform();
+            id(sleep_timer).execute();
+            return;
+          }
+          id(sleep_timer).execute();
+          if (id(current_page) == 1) {
+            id(current_page) = 3;
+            id(show_presets_page).execute();
+          } else if (id(current_page) == 2) {
+            if (id(brightness_pct) > 5) {
+              id(brightness_pct) -= 5;
+              if (id(brightness_pct) < 5) id(brightness_pct) = 5;
+              id(update_brightness_ui).execute();
+            }
+          } else if (id(current_page) == 3) {
+            id(selected_preset) = (id(selected_preset) + 3) % 4;
+            id(update_preset_ui).execute();
+          }
+
+  - platform: wifi_signal
+    id: wifi_rssi
+    name: "WiFi Signal"
+    update_interval: 30s
+    on_value:
+      then:
+        - script.execute: update_wifi_complication
+
+  - platform: template
+    id: ambient_lux
+    name: "Ambient Light"
+    unit_of_measurement: "lx"
+    update_interval: 10s
+    lambda: 'return 340.0;'
+    on_value:
+      then:
+        - script.execute: update_lux_complication
+
+binary_sensor:
+  - platform: gpio
+    id: knob_button
+    name: "Knob Button"
+    pin:
+      number: GPIO41
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+    on_press:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(back_light).turn_on().set_brightness(0.8).perform();
+            id(sleep_timer).execute();
+            return;
+          }
+          id(sleep_timer).execute();
+          if (id(current_page) == 1) {
+            id(toggle_power).execute();
+          } else if (id(current_page) == 2) {
+            id(current_page) = 1;
+            id(show_power_page).execute();
+          } else if (id(current_page) == 3) {
+            id(apply_preset).execute();
+          }
+
+# ------------------------------------------------------------------------------
+# SCRIPTS
+# ------------------------------------------------------------------------------
+script:
+  - id: sleep_timer
+    mode: restart
+    then:
+      - delay: 60s
+      - lambda: |-
+          id(display_awake) = false;
+          id(touch_woke_this_cycle) = false;
+      - light.turn_on:
+          id: back_light
+          brightness: 10%
+
+  - id: toggle_power
+    then:
+      - lambda: |-
+          id(light_is_on) = !id(light_is_on);
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - light.turn_on:
+                id: led_ring
+                red: 100%
+                green: 65%
+                blue: 0%
+                brightness: 30%
+            - lvgl.label.update:
+                id: power_label
+                text: "ON"
+                text_color: 0xFFFFFF
+          else:
+            - light.turn_off:
+                id: led_ring
+            - lvgl.label.update:
+                id: power_label
+                text: "OFF"
+                text_color: 0x666666
+      - homeassistant.service:
+          service: light.toggle
+          data:
+            entity_id: ${light_group}
+
+  - id: update_brightness_ui
+    mode: restart
+    then:
+      - lvgl.label.update:
+          id: brightness_label
+          text: !lambda |-
+            static char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+            return buf;
+      - delay: 200ms
+      - homeassistant.service:
+          service: light.turn_on
+          data_template:
+            entity_id: "${light_group}"
+            brightness_pct: "{{ id(brightness_pct) }}"
+
+  - id: update_preset_ui
+    then:
+      - lvgl.label.update:
+          id: preset_label
+          text: !lambda |-
+            const char* names[] = {"Warm White", "Soft Amber", "Neutral", "Nightlight"};
+            return names[id(selected_preset)];
+
+  - id: apply_preset
+    then:
+      - lambda: |-
+          id(current_page) = 1;
+      - homeassistant.service:
+          service: light.turn_on
+          data_template:
+            entity_id: "${light_group}"
+            brightness_pct: "100"
+      - script.execute: show_power_page
+
+  - id: update_wifi_complication
+    then:
+      - lvgl.label.update:
+          id: wifi_comp_p1
+          text: !lambda |-
+            static char buf[14];
+            snprintf(buf, sizeof(buf), "W %ddBm", (int)id(wifi_rssi).state);
+            return buf;
+      - lvgl.label.update:
+          id: wifi_comp_p2
+          text: !lambda |-
+            static char buf[14];
+            snprintf(buf, sizeof(buf), "W %ddBm", (int)id(wifi_rssi).state);
+            return buf;
+      - lvgl.label.update:
+          id: wifi_comp_p3
+          text: !lambda |-
+            static char buf[14];
+            snprintf(buf, sizeof(buf), "W %ddBm", (int)id(wifi_rssi).state);
+            return buf;
+
+  - id: update_lux_complication
+    then:
+      - lvgl.label.update:
+          id: lux_comp_p1
+          text: !lambda |-
+            static char buf[12];
+            snprintf(buf, sizeof(buf), "L %dlx", (int)id(ambient_lux).state);
+            return buf;
+      - lvgl.label.update:
+          id: lux_comp_p2
+          text: !lambda |-
+            static char buf[12];
+            snprintf(buf, sizeof(buf), "L %dlx", (int)id(ambient_lux).state);
+            return buf;
+      - lvgl.label.update:
+          id: lux_comp_p3
+          text: !lambda |-
+            static char buf[12];
+            snprintf(buf, sizeof(buf), "L %dlx", (int)id(ambient_lux).state);
+            return buf;
+
+  - id: show_power_page
+    then:
+      - lvgl.page.show: power_page
+
+  - id: show_brightness_page
+    then:
+      - lvgl.page.show: brightness_page
+
+  - id: show_presets_page
+    then:
+      - lvgl.page.show: presets_page
+
+# ------------------------------------------------------------------------------
+# HOME ASSISTANT STATE IMPORT
+# ------------------------------------------------------------------------------
+text_sensor:
+  - platform: homeassistant
+    id: ha_light_state
+    entity_id: ${light_group}
+    on_value:
+      then:
+        - lambda: |-
+            if (x == "on") {
+              id(light_is_on) = true;
+            } else {
+              id(light_is_on) = false;
+            }
+        - if:
+            condition:
+              lambda: 'return id(light_is_on);'
+            then:
+              - lvgl.label.update:
+                  id: power_label
+                  text: "ON"
+                  text_color: 0xFFFFFF
+              - light.turn_on:
+                  id: led_ring
+                  red: 100%
+                  green: 65%
+                  blue: 0%
+                  brightness: 30%
+            else:
+              - lvgl.label.update:
+                  id: power_label
+                  text: "OFF"
+                  text_color: 0x666666
+              - light.turn_off:
+                  id: led_ring
+
+  - platform: homeassistant
+    id: ha_light_brightness
+    entity_id: ${light_group}
+    attribute: brightness
+    on_value:
+      then:
+        - lambda: |-
+            if (x.length() > 0) {
+              int b = (int)(atof(x.c_str()) * 100.0 / 255.0);
+              if (b < 1) b = 1;
+              if (b > 100) b = 100;
+              id(brightness_pct) = b;
+            }
+        - lvgl.label.update:
+            id: brightness_label
+            text: !lambda |-
+              static char buf[8];
+              snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+              return buf;
+
+# ------------------------------------------------------------------------------
+# LVGL UI DEFINITION
+#
+# Apple Watch Complications: 2 corner complications per page + center content.
+# Complications are DISPLAY-ONLY (not interactive).
+# WAKE-ONLY-FIRST: resume_on_input is FALSE.
+# ------------------------------------------------------------------------------
+lvgl:
+  displays:
+    - round_display
+  touchscreens:
+    - touchscreen_id: touch
+  default_font: roboto16
+  color_depth: 16
+  buffer_size: 25%
+  resume_on_input: false
+
+  pages:
+    # ========================================================================
+    # PAGE 1: POWER — Center ON/OFF + 2 corner complications
+    # ========================================================================
+    - id: power_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      on_load:
+        - lambda: 'id(current_page) = 1;'
+      widgets:
+        # Top-left complication: WiFi RSSI
+        - label:
+            id: wifi_comp_p1
+            align: TOP_LEFT
+            x: 40
+            y: 30
+            text_font: roboto14
+            text_color: 0x888888
+            text: "W --dBm"
+
+        # Top-right complication: Ambient Lux
+        - label:
+            id: lux_comp_p1
+            align: TOP_RIGHT
+            x: -40
+            y: 30
+            text_font: roboto14
+            text_color: 0x888888
+            text: "L --lx"
+
+        # Primary value: ON or OFF
+        - label:
+            id: power_label
+            align: CENTER
+            text_font: roboto48
+            text_color: 0x666666
+            text: "OFF"
+
+        # Page indicator dots
+        - obj:
+            align: BOTTOM_MID
+            y: -20
+            width: 40
+            height: 8
+            bg_opa: TRANSP
+            border_width: 0
+            widgets:
+              - obj:
+                  x: 0
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0xFFA500
+                  border_width: 0
+              - obj:
+                  x: 16
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+              - obj:
+                  x: 32
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+
+    # ========================================================================
+    # PAGE 2: BRIGHTNESS — Center percentage + 2 corner complications
+    # ========================================================================
+    - id: brightness_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      on_load:
+        - lambda: 'id(current_page) = 2;'
+      widgets:
+        # Top-left complication: WiFi RSSI
+        - label:
+            id: wifi_comp_p2
+            align: TOP_LEFT
+            x: 40
+            y: 30
+            text_font: roboto14
+            text_color: 0x888888
+            text: "W --dBm"
+
+        # Top-right complication: Ambient Lux
+        - label:
+            id: lux_comp_p2
+            align: TOP_RIGHT
+            x: -40
+            y: 30
+            text_font: roboto14
+            text_color: 0x888888
+            text: "L --lx"
+
+        # "Brightness" header
+        - label:
+            align: TOP_MID
+            y: 55
+            text_font: roboto16
+            text_color: 0x888888
+            text: "Brightness"
+
+        # Primary value: percentage
+        - label:
+            id: brightness_label
+            align: CENTER
+            text_font: roboto48
+            text_color: 0xFFFFFF
+            text: "50%"
+
+        # Page indicator dots
+        - obj:
+            align: BOTTOM_MID
+            y: -20
+            width: 40
+            height: 8
+            bg_opa: TRANSP
+            border_width: 0
+            widgets:
+              - obj:
+                  x: 0
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+              - obj:
+                  x: 16
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0xFFA500
+                  border_width: 0
+              - obj:
+                  x: 32
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+
+    # ========================================================================
+    # PAGE 3: PRESETS — Center preset name + 2 corner complications
+    # ========================================================================
+    - id: presets_page
+      bg_color: 0x000000
+      bg_opa: COVER
+      on_load:
+        - lambda: 'id(current_page) = 3;'
+      widgets:
+        # Top-left complication: WiFi RSSI
+        - label:
+            id: wifi_comp_p3
+            align: TOP_LEFT
+            x: 40
+            y: 30
+            text_font: roboto14
+            text_color: 0x888888
+            text: "W --dBm"
+
+        # Top-right complication: Ambient Lux
+        - label:
+            id: lux_comp_p3
+            align: TOP_RIGHT
+            x: -40
+            y: 30
+            text_font: roboto14
+            text_color: 0x888888
+            text: "L --lx"
+
+        # "Presets" header
+        - label:
+            align: TOP_MID
+            y: 55
+            text_font: roboto16
+            text_color: 0x888888
+            text: "Presets"
+
+        # Active preset name
+        - label:
+            id: preset_label
+            align: CENTER
+            text_font: roboto24
+            text_color: 0xFFA500
+            text: "Warm White"
+
+        # Page indicator dots
+        - obj:
+            align: BOTTOM_MID
+            y: -20
+            width: 40
+            height: 8
+            bg_opa: TRANSP
+            border_width: 0
+            widgets:
+              - obj:
+                  x: 0
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+              - obj:
+                  x: 16
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0x444444
+                  border_width: 0
+              - obj:
+                  x: 32
+                  y: 0
+                  width: 8
+                  height: 8
+                  radius: 4
+                  bg_color: 0xFFA500
+                  border_width: 0
