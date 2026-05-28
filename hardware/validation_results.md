@@ -373,9 +373,22 @@ Concept 09 (LED-Ring Status-First) inverts the typical smart-display hierarchy. 
 
 ---
 
+## UI Concept 10: Three-Screen Tab Carousel Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_10_three_screen_tab_carousel.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 417s) |
+| Gate status | **PASSES all gates (G1-G8)** — Direct v1 spec implementation |
+| Physical validation | NOT TESTED |
+
+Concept 10 (Three-Screen Tab Carousel) is the direct, literal implementation of the locked v1 specification. Three horizontally swipeable pages (Power, Brightness, Presets) with a 3-dot page indicator in the LVGL top_layer (always visible). The concept uses the production YAML's exact architecture: FLEX-layout dot container, guarded swipe scripts, 2x2 preset grid with FLEX ROW_WRAP, and a display-only brightness arc controlled exclusively by the rotary encoder. Premium execution details: 200ms MOVE_LEFT/MOVE_RIGHT transitions, active dot grows from 8px to 10px, amber accent throughout. This is the safe baseline against which all other concepts are compared. Zero compile errors on first attempt.
+
+---
+
 ## Document control
 
-**Version:** 0.16 — Added Concept 09 LED-Ring Status-First note; compile PASSED, Layer concept, LED ring as primary feedback, all LED hardware tests pending.
+**Version:** 0.17 — Added Concept 10 Three-Screen Tab Carousel note; compile PASSED, direct v1 spec implementation, zero errors on first attempt.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).

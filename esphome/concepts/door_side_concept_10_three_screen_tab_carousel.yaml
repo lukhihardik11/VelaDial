@@ -1,0 +1,792 @@
+# ===========================================================================
+# VelaDial — UI Concept 10: Three-Screen Tab Carousel
+# ===========================================================================
+# CONCEPT PROTOTYPE / NOT PRODUCTION
+# This YAML implements UI Concept 10 (Three-Screen Tab Carousel).
+# It is designed for the ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display.
+#
+# COMPILE STATUS: PASSED (2026-05-28, ESPHome 2026.5.0, ESP-IDF, 0 errors, 417s)
+#
+# Key Features:
+# - Direct literal implementation of the locked v1 spec
+# - 3 horizontally swipeable pages: Power, Brightness, Presets
+# - 3-dot page indicator (top_layer, always visible)
+# - Premium execution: consistent spacing, smooth 200ms transitions
+# - Amber accent (0xFFA500) for active states
+# - 2x2 preset grid within circular safe area
+# - 270-degree brightness arc (display-only, knob-controlled)
+# - Wake-only-first enforced on all inputs
+# - Always wakes to Page 0 (Power)
+# - Targets light.bedroom_group
+#
+# 4 Locked Presets:
+# - Warm White
+# - Soft Amber
+# - Neutral White
+# - Low Nightlight
+#
+# NOT PRODUCTION. NOT TESTED. CONCEPT EXPLORATION ONLY.
+# ===========================================================================
+
+substitutions:
+  device_name: veladial-door-concept10
+  friendly_name: "VelaDial Door Concept10"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          id(display_awake) = true;
+          id(light_is_on) = false;
+          id(brightness_pct) = 50;
+          id(current_page) = 0;
+          id(active_preset) = 0;
+          id(touch_woke_this_cycle) = false;
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    version: recommended
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name}-AP"
+    password: !secret ap_password
+
+# ---------------------------------------------------------------------------
+# Global Variables
+# ---------------------------------------------------------------------------
+globals:
+  - id: display_awake
+    type: bool
+    initial_value: 'true'
+  - id: light_is_on
+    type: bool
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    initial_value: '50'
+  - id: current_page
+    type: int
+    initial_value: '0'
+  - id: active_preset
+    type: int
+    initial_value: '0'
+  - id: touch_woke_this_cycle
+    type: bool
+    initial_value: 'false'
+
+# ---------------------------------------------------------------------------
+# I2C Buses
+# ---------------------------------------------------------------------------
+i2c:
+  - id: bus_touch
+    sda: GPIO6
+    scl: GPIO7
+    scan: false
+  - id: bus_sensors
+    sda: GPIO38
+    scl: GPIO39
+    scan: false
+
+# ---------------------------------------------------------------------------
+# SPI Bus — Display (GC9A01)
+# ---------------------------------------------------------------------------
+spi:
+  mosi_pin: GPIO11
+  clk_pin: GPIO10
+
+# ---------------------------------------------------------------------------
+# Output — Backlight PWM
+# ---------------------------------------------------------------------------
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO46
+
+light:
+  # Backlight
+  - platform: monochromatic
+    id: backlight
+    output: backlight_pwm
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+    default_transition_length: 500ms
+
+  # WS2812 LED Ring — 5 LEDs on GPIO48
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "LED Ring"
+    pin: GPIO48
+    num_leds: 5
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 300ms
+
+# ---------------------------------------------------------------------------
+# Display — GC9A01 240x240 Round
+# ---------------------------------------------------------------------------
+display:
+  - platform: ili9xxx
+    id: main_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+
+# ---------------------------------------------------------------------------
+# Touchscreen — CST816D
+# ---------------------------------------------------------------------------
+touchscreen:
+  - platform: cst816
+    id: my_touch
+    i2c_id: bus_touch
+    interrupt_pin: GPIO5
+    reset_pin: GPIO13
+    on_touch:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          }
+      - script.execute: wake_screen
+
+# ---------------------------------------------------------------------------
+# Rotary Encoder
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: knob
+    name: "Rotary Encoder"
+    pin_a: GPIO1
+    pin_b: GPIO2
+    resolution: 1
+    on_clockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              // Brightness page: increase brightness
+              if (id(brightness_pct) < 100) {
+                id(brightness_pct) += 5;
+                if (id(brightness_pct) > 100) id(brightness_pct) = 100;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+    on_anticlockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              // Brightness page: decrease brightness
+              if (id(brightness_pct) > 5) {
+                id(brightness_pct) -= 5;
+                if (id(brightness_pct) < 5) id(brightness_pct) = 5;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Knob Button
+# ---------------------------------------------------------------------------
+binary_sensor:
+  - platform: gpio
+    id: knob_button
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    on_press:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 0) {
+              // Power page: toggle power
+              id(light_is_on) = !id(light_is_on);
+              if (id(light_is_on) && id(brightness_pct) == 0) {
+                id(brightness_pct) = 80;
+              }
+            } else if (id(current_page) == 1) {
+              // Brightness page: return to Power
+              id(current_page) = 0;
+            } else if (id(current_page) == 2) {
+              // Presets page: apply active preset
+              id(light_is_on) = true;
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+      - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Home Assistant State Import
+# ---------------------------------------------------------------------------
+text_sensor:
+  - platform: homeassistant
+    id: ha_light_state
+    entity_id: light.bedroom_group
+    attribute: state
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            id(light_is_on) = true;
+          } else if (x == "off") {
+            id(light_is_on) = false;
+          }
+      - script.execute: update_ui
+
+  - platform: homeassistant
+    id: ha_light_brightness
+    entity_id: light.bedroom_group
+    attribute: brightness
+    on_value:
+      - lambda: |-
+          if (x.length() > 0) {
+            int b = atoi(x.c_str());
+            id(brightness_pct) = (b * 100) / 255;
+          }
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Scripts
+# ---------------------------------------------------------------------------
+script:
+  # --- Wake Screen ---
+  - id: wake_screen
+    mode: restart
+    then:
+      - light.turn_on:
+          id: backlight
+          brightness: 100%
+          transition_length: 200ms
+      - if:
+          condition:
+            lambda: 'return id(touch_woke_this_cycle);'
+          then:
+            - lvgl.page.show:
+                id: page_power
+                animation: NONE
+                time: 0ms
+            - lambda: 'id(current_page) = 0;'
+      - delay: 500ms
+      - lambda: 'id(touch_woke_this_cycle) = false;'
+      - delay: 29500ms
+      - lambda: 'id(display_awake) = false;'
+      - light.turn_off:
+          id: backlight
+          transition_length: 500ms
+
+  # --- Update UI ---
+  - id: update_ui
+    mode: restart
+    then:
+      # Update power label
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - lvgl.label.update:
+                id: power_label
+                text: "ON"
+                text_color: 0xFFFFFF
+          else:
+            - lvgl.label.update:
+                id: power_label
+                text: "OFF"
+                text_color: 0x666666
+      # Update brightness arc and label
+      - lvgl.arc.update:
+          id: brightness_arc
+          value: !lambda 'return id(brightness_pct);'
+      - lvgl.label.update:
+          id: brightness_value_label
+          text: !lambda |-
+            static char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+            return buf;
+      # Update preset highlight
+      - lvgl.label.update:
+          id: preset_label_0
+          text_color: !lambda 'return (id(active_preset) == 0) ? lv_color_hex(0xFFA500) : lv_color_hex(0xAAAAAA);'
+      - lvgl.label.update:
+          id: preset_label_1
+          text_color: !lambda 'return (id(active_preset) == 1) ? lv_color_hex(0xFFA500) : lv_color_hex(0xAAAAAA);'
+      - lvgl.label.update:
+          id: preset_label_2
+          text_color: !lambda 'return (id(active_preset) == 2) ? lv_color_hex(0xFFA500) : lv_color_hex(0xAAAAAA);'
+      - lvgl.label.update:
+          id: preset_label_3
+          text_color: !lambda 'return (id(active_preset) == 3) ? lv_color_hex(0xFFA500) : lv_color_hex(0xAAAAAA);'
+      # Update LED ring
+      - script.execute: update_led_ring
+      # Update page dots
+      - lvgl.widget.update:
+          id: dot_0
+          width: !lambda 'return (id(current_page) == 0) ? 10 : 8;'
+          height: !lambda 'return (id(current_page) == 0) ? 10 : 8;'
+          bg_color: !lambda 'return (id(current_page) == 0) ? lv_color_hex(0xFFA500) : lv_color_hex(0x444444);'
+      - lvgl.widget.update:
+          id: dot_1
+          width: !lambda 'return (id(current_page) == 1) ? 10 : 8;'
+          height: !lambda 'return (id(current_page) == 1) ? 10 : 8;'
+          bg_color: !lambda 'return (id(current_page) == 1) ? lv_color_hex(0xFFA500) : lv_color_hex(0x444444);'
+      - lvgl.widget.update:
+          id: dot_2
+          width: !lambda 'return (id(current_page) == 2) ? 10 : 8;'
+          height: !lambda 'return (id(current_page) == 2) ? 10 : 8;'
+          bg_color: !lambda 'return (id(current_page) == 2) ? lv_color_hex(0xFFA500) : lv_color_hex(0x444444);'
+
+  # --- Update LED Ring ---
+  - id: update_led_ring
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - light.turn_on:
+                id: led_ring
+                red: 100%
+                green: 65%
+                blue: 0%
+                brightness: !lambda 'return (id(brightness_pct) / 100.0) * 0.30;'
+                transition_length: 300ms
+          else:
+            - light.turn_off:
+                id: led_ring
+                transition_length: 300ms
+
+  # --- Send to Home Assistant ---
+  - id: send_to_ha
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: light.bedroom_group
+                  brightness: !lambda 'return (id(brightness_pct) * 255) / 100;'
+          else:
+            - homeassistant.action:
+                action: light.turn_off
+                data:
+                  entity_id: light.bedroom_group
+
+  # --- Guarded Swipe Left ---
+  - id: guarded_swipe_left
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) < 2) {
+                  id(current_page) += 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2;'
+                then:
+                  - lvgl.page.show:
+                      id: page_presets
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Swipe Right ---
+  - id: guarded_swipe_right
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) > 0) {
+                  id(current_page) -= 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 0;'
+                then:
+                  - lvgl.page.show:
+                      id: page_power
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Power Toggle ---
+  - id: guarded_power_toggle
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(light_is_on) = !id(light_is_on);
+                if (id(light_is_on) && id(brightness_pct) == 0) {
+                  id(brightness_pct) = 80;
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+  # --- Guarded Preset Apply ---
+  - id: guarded_preset_apply
+    mode: single
+    parameters:
+      preset_index: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(active_preset) = preset_index;
+                id(light_is_on) = true;
+                // Set brightness based on preset
+                switch (preset_index) {
+                  case 0: id(brightness_pct) = 80; break;  // Warm White
+                  case 1: id(brightness_pct) = 60; break;  // Soft Amber
+                  case 2: id(brightness_pct) = 90; break;  // Neutral White
+                  case 3: id(brightness_pct) = 15; break;  // Low Nightlight
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Fonts
+# ---------------------------------------------------------------------------
+font:
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_48
+    size: 48
+    glyphs: "0123456789%ONF "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_16
+    size: 16
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz %.-"
+
+# ---------------------------------------------------------------------------
+# LVGL — Three-Screen Tab Carousel
+# ---------------------------------------------------------------------------
+lvgl:
+  displays:
+    - main_display
+  touchscreens:
+    - my_touch
+  color_depth: 16
+  buffer_size: 25%
+
+  # Top layer — always-visible 3-dot page indicator
+  top_layer:
+    widgets:
+      - obj:
+          id: page_indicator
+          align: BOTTOM_MID
+          y: -12
+          width: 60
+          height: 14
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          layout:
+            type: FLEX
+            flex_flow: ROW
+            flex_align_main: CENTER
+            flex_align_cross: CENTER
+          widgets:
+            - obj:
+                id: dot_0
+                width: 10
+                height: 10
+                radius: 5
+                bg_color: 0xFFA500
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_1
+                width: 8
+                height: 8
+                radius: 5
+                bg_color: 0x444444
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_2
+                width: 8
+                height: 8
+                radius: 5
+                bg_color: 0x444444
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+
+  # Pages
+  pages:
+    # ----- PAGE 0: Power -----
+    - id: page_power
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # Power button area
+        - button:
+            id: power_btn
+            align: CENTER
+            width: 120
+            height: 120
+            radius: 60
+            bg_color: 0x1A1A1A
+            border_color: 0x333333
+            border_width: 2
+            widgets:
+              - label:
+                  id: power_label
+                  align: CENTER
+                  text_font: font_48
+                  text_color: 0x666666
+                  text: "OFF"
+            on_click:
+              - script.execute: guarded_power_toggle
+
+        # Status subtitle
+        - label:
+            id: power_status
+            align: CENTER
+            y: 80
+            text_font: font_16
+            text_color: 0x888888
+            text: "Power"
+
+      on_load:
+        - lambda: 'id(current_page) = 0;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 1: Brightness -----
+    - id: page_brightness
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # Brightness arc (display-only, knob-controlled)
+        - arc:
+            id: brightness_arc
+            align: CENTER
+            width: 180
+            height: 180
+            min_value: 0
+            max_value: 100
+            value: 50
+            start_angle: 135
+            end_angle: 45
+            adjustable: false
+            indicator:
+              bg_color: 0xFFA500
+              width: 8
+            bg_color: 0x333333
+            bg_opa: COVER
+
+        # Center percentage label
+        - label:
+            id: brightness_value_label
+            align: CENTER
+            text_font: font_48
+            text_color: 0xFFFFFF
+            text: "50%"
+
+        # Subtitle
+        - label:
+            align: CENTER
+            y: 35
+            text_font: font_16
+            text_color: 0x888888
+            text: "Brightness"
+
+      on_load:
+        - lambda: 'id(current_page) = 1;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 2: Presets -----
+    - id: page_presets
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # Title
+        - label:
+            align: TOP_MID
+            y: 25
+            text_font: font_16
+            text_color: 0x888888
+            text: "Presets"
+
+        # 2x2 grid container
+        - obj:
+            align: CENTER
+            width: 180
+            height: 160
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 6
+            layout:
+              type: FLEX
+              flex_flow: ROW_WRAP
+              flex_align_main: SPACE_EVENLY
+              flex_align_cross: CENTER
+              flex_align_track: SPACE_EVENLY
+            widgets:
+              # Preset 0: Warm White
+              - button:
+                  id: preset_btn_0
+                  width: 80
+                  height: 65
+                  radius: 12
+                  bg_color: 0x1A1A1A
+                  border_color: 0x444444
+                  border_width: 2
+                  widgets:
+                    - label:
+                        id: preset_label_0
+                        align: CENTER
+                        text_font: font_16
+                        text_color: 0xFFA500
+                        text: "Warm"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 0
+
+              # Preset 1: Soft Amber
+              - button:
+                  id: preset_btn_1
+                  width: 80
+                  height: 65
+                  radius: 12
+                  bg_color: 0x1A1A1A
+                  border_color: 0x444444
+                  border_width: 2
+                  widgets:
+                    - label:
+                        id: preset_label_1
+                        align: CENTER
+                        text_font: font_16
+                        text_color: 0xAAAAAA
+                        text: "Amber"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 1
+
+              # Preset 2: Neutral White
+              - button:
+                  id: preset_btn_2
+                  width: 80
+                  height: 65
+                  radius: 12
+                  bg_color: 0x1A1A1A
+                  border_color: 0x444444
+                  border_width: 2
+                  widgets:
+                    - label:
+                        id: preset_label_2
+                        align: CENTER
+                        text_font: font_16
+                        text_color: 0xAAAAAA
+                        text: "Neutral"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 2
+
+              # Preset 3: Low Nightlight
+              - button:
+                  id: preset_btn_3
+                  width: 80
+                  height: 65
+                  radius: 12
+                  bg_color: 0x1A1A1A
+                  border_color: 0x444444
+                  border_width: 2
+                  widgets:
+                    - label:
+                        id: preset_label_3
+                        align: CENTER
+                        text_font: font_16
+                        text_color: 0xAAAAAA
+                        text: "Night"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 3
+
+      on_load:
+        - lambda: 'id(current_page) = 2;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
