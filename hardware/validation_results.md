@@ -359,9 +359,23 @@ Concept 08 (Apple Watch Complications) borrows the watchOS Infograph "complicati
 
 ---
 
+## UI Concept 09: LED-Ring Status-First Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_09_led_ring_status_first.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 81s) |
+| Gate status | **PASSES all gates (G1-G8)** — Layer concept |
+| Physical validation | NOT TESTED |
+| LED hardware tests | ALL PENDING (color order, LED 0 position, brightness ceiling, RMT conflicts) |
+
+Concept 09 (LED-Ring Status-First) inverts the typical smart-display hierarchy. The 5-LED WS2812 ring on GPIO48 is the PRIMARY output — visible from across the room — while the 240x240 screen is secondary with only 6 LVGL widgets (3 labels + 3 page dots). LED color maps to active preset (amber/gold/white/dim amber), LED brightness is proportional to light brightness (capped at 50% for bedroom safety), and error states use red pulse patterns. The LED ring has an extended 30-second timeout after screen sleep for ambient room awareness. All LED behavior is hardware-test-pending: color order (GRB assumed), LED 0 physical orientation, brightness ceiling comfort, and RMT channel conflicts are unverified.
+
+---
+
 ## Document control
 
-**Version:** 0.15 — Added Concept 08 Apple Watch Complications note; compile PASSED, NOT RECOMMENDED for v1, v1-expanded adaptation, no physical validation.
+**Version:** 0.16 — Added Concept 09 LED-Ring Status-First note; compile PASSED, Layer concept, LED ring as primary feedback, all LED hardware tests pending.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
