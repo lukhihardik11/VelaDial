@@ -319,9 +319,22 @@ Concept 05 (Preset Ring UI) uses 4 colored arc segments around the ring as a pre
 
 ---
 
+## UI Concept 06: Night Mode Ultra-Minimal Note
+
+| Field | Value |
+| --- | --- |
+| Concept YAML | `esphome/concepts/door_side_concept_06_night_mode_ultra_minimal.yaml` |
+| Compile status | **PASSED** (ESPHome 2026.5.0, ESP-IDF, 0 errors, 86s incremental) |
+| Gate status | **PASSES all gates (G1-G8)** — Layer concept |
+| Physical validation | NOT TESTED |
+
+Concept 06 (Night Mode Ultra-Minimal) is a layer concept — the sleep/dark-room state that overlays any active primary concept. When the TSL2591 ambient light sensor reads below 5 lux for 10 seconds, the display enters Night Mode: backlight drops to 10% PWM, all UI elements disappear except a single 8px amber dot (lights off) or dim percentage value (lights on). ALL inputs in Night Mode are wake-only — no action is executed, only the full UI is restored. Hysteresis band (5 lux entry, 15 lux exit) prevents oscillation.
+
+---
+
 ## Document control
 
-**Version:** 0.12 — Added Concepts 04-05 notes; both compile PASSED, no physical validation.
+**Version:** 0.13 — Added Concept 06 Night Mode Ultra-Minimal note; compile PASSED, layer concept, no physical validation.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
