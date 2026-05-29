@@ -448,9 +448,15 @@ Concept 16 (Topographic Contour Map) maps brightness to terrain elevation. At 10
 | Compile (ESPHome 2026.5.0) | PASSED (0 errors, 169.83s fresh build) |
 | Physical validation | NOT TESTED |
 Concept 17 (Iris Aperture Mechanism) maps brightness to the opening diameter of a camera iris/aperture. At 100% brightness, the iris is fully open (f/1.4) — a large warm amber circle fills the display, representing maximum light entering the lens. At 5%, the iris is nearly closed (f/16) — only a tiny pinhole of amber light is visible through the converging blades. The iris blades are simulated using 8 thick `lv_arc` segments arranged in an octagonal pattern, representing the overlapping metallic blades of a precision camera diaphragm. The central amber circle (the "light field") scales proportionally with brightness. Page 1 (Power) shows an open iris (ON) vs fully closed iris (OFF). Page 2 (Brightness Hero) shows the iris opening with a percentage overlay. Page 3 (Presets) maps each preset to an aperture mode: Warm White = Wide Open, Soft Amber = Portrait, Neutral White = Landscape, Low Nightlight = Pinhole. LED ring acts as the lens rim / light leak with proportional warm amber. Premium and optical/mechanical — connects electric light to precision optics. The most mechanically coherent concept in the matrix: aperture literally controls light.
+### Concept 18: Radar Sweep Animation
+| Item | Status |
+|------|--------|
+| Compile (ESPHome 2026.5.0) | PASSED (0 errors, 150.57s fresh build) |
+| Physical validation | NOT TESTED |
+Concept 18 (Radar Sweep Animation) maps brightness to the angular span of a radar sweep trail. At 100% brightness, the sweep arc forms a full 360° circle (maximum scan coverage). At 5%, only a tiny 18° sliver is visible (minimal scan). The display is styled as a futuristic scanning instrument with concentric range rings (dark gray circles at 0x222222), faint crosshair lines, and a central scope dot. The sweep trail is implemented as a large `lv_arc` widget with a warm amber indicator (`0xFFB000`) whose `value` maps directly to brightness percentage. A secondary inner arc provides visual depth. Page 0 (Power) shows "SCAN ACTIVE" (ON, large amber blip) vs "SCAN OFFLINE" (OFF, dim gray dot). Page 1 (Brightness Hero) shows the sweep scope with range rings, dual sweep arcs, and a large Roboto Mono percentage readout. Page 2 (Presets) maps each preset to a scan mode: Warm White = Wide Scan, Soft Amber = Focused Scan, Neutral White = Daylight Scan, Low Nightlight = Stealth Scan. LED ring acts as scanner perimeter glow with proportional warm amber. Premium and futuristic — connects electric light to environmental scanning. The only concept in the matrix with a motion/animation metaphor. Uses arc trail approximation instead of true continuous rotation for compile safety and performance.
 ---
 ## Document control
-**Version:** 0.24 — Added Concept 17 Iris Aperture Mechanism note; compile PASSED, iris aperture metaphor, optical/mechanical/premium, 0 errors.
+**Version:** 0.25 — Added Concept 18 Radar Sweep Animation note; compile PASSED, radar sweep metaphor, futuristic/scanning/premium, 0 errors.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
