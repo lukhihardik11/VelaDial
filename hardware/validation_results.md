@@ -442,11 +442,15 @@ Concept 15 (Tree Ring Growth Pattern) maps brightness to the number of visible c
 
 Concept 16 (Topographic Contour Map) maps brightness to terrain elevation. At 100% brightness, the display shows a mountain peak — 12 dense, closely spaced contour lines filling the circle with a bright summit marker at center. At 5%, only the innermost contour is visible (valley floor). The contour lines are implemented as thin-bordered (2px) concentric `lv_obj` circles in a gradient from dark amber (inner) to bright amber (outer), creating a cartographic aesthetic. A small summit marker dot at center differentiates this from Concept 15 (Tree Rings). Page 1 (Power) shows active terrain (ON) vs flat plain (OFF). Page 2 (Brightness Hero) shows contour density with elevation percentage. Page 3 (Presets) maps each preset to a terrain zone: Warm White = Summit, Soft Amber = Ridge, Neutral White = Plateau, Low Nightlight = Valley. LED ring acts as the outer horizon line with proportional warm amber. Premium and cartographic — connects electric light to terrain exploration. Uses Roboto Mono for technical precision feel.
 
+### Concept 17: Iris Aperture Mechanism
+| Item | Status |
+|------|--------|
+| Compile (ESPHome 2026.5.0) | PASSED (0 errors, 169.83s fresh build) |
+| Physical validation | NOT TESTED |
+Concept 17 (Iris Aperture Mechanism) maps brightness to the opening diameter of a camera iris/aperture. At 100% brightness, the iris is fully open (f/1.4) — a large warm amber circle fills the display, representing maximum light entering the lens. At 5%, the iris is nearly closed (f/16) — only a tiny pinhole of amber light is visible through the converging blades. The iris blades are simulated using 8 thick `lv_arc` segments arranged in an octagonal pattern, representing the overlapping metallic blades of a precision camera diaphragm. The central amber circle (the "light field") scales proportionally with brightness. Page 1 (Power) shows an open iris (ON) vs fully closed iris (OFF). Page 2 (Brightness Hero) shows the iris opening with a percentage overlay. Page 3 (Presets) maps each preset to an aperture mode: Warm White = Wide Open, Soft Amber = Portrait, Neutral White = Landscape, Low Nightlight = Pinhole. LED ring acts as the lens rim / light leak with proportional warm amber. Premium and optical/mechanical — connects electric light to precision optics. The most mechanically coherent concept in the matrix: aperture literally controls light.
 ---
-
 ## Document control
-
-**Version:** 0.23 — Added Concept 16 Topographic Contour Map note; compile PASSED, contour density metaphor, cartographic/premium, 0 errors.
+**Version:** 0.24 — Added Concept 17 Iris Aperture Mechanism note; compile PASSED, iris aperture metaphor, optical/mechanical/premium, 0 errors.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
