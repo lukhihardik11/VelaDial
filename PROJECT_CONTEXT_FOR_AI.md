@@ -18,7 +18,7 @@ The system has three parts:
 
 Write production-ready ESPHome YAML for v1 only:
 
-1. **Door-side rotary display** — 3-page LVGL UI (Power, Brightness, Presets) with locked behavior described in this file and in `docs/03_App_Flow.md` and `docs/04_UI_UX_Design_Brief.md`.
+1. **Door-side rotary display** — Multi-theme firmware engine containing 20 selectable UI themes. The main control UI remains 3 pages (Power, Brightness, Presets) plus a hidden Theme Selector accessed via long-press. Behavior is locked as described in this file and in `docs/03_App_Flow.md` and `docs/04_UI_UX_Design_Brief.md`.
 2. **Adaptive display brightness** — TSL2591 lux drives display backlight PWM locally on the ESP32-S3, no Home Assistant round-trip.
 3. **Bedside controller v1**:
    - APDS-9960 standalone left/right gestures.
@@ -37,7 +37,7 @@ The YAML should be readable, commented, configurable, and safe for public source
 - Dark UI with low light pollution.
 - Large readable labels for a 240 x 240 round display.
 - Keep credentials and local keys out of the repository.
-- Main UI stays exactly 3 pages: Power, Brightness, Presets.
+- Main control UI is exactly **3 pages**: Power, Brightness, Presets. (Plus a hidden Theme Selector).
 - Temperature/humidity is secondary diagnostics only, not a required main page.
 - Bedroom safety is more important than shortcut speed; a second deliberate action is what acts.
 
@@ -99,7 +99,7 @@ No XSHUT pin reassignment or TCA9548A I2C multiplexer is required for the first-
 - SHT45 is secondary diagnostics, not a required main page.
 - VL53L4CD enables deliberate nightlight hold, not accidental triggers.
 - **No required 4th Environment page on the display.**
-- **Main UI is exactly 3 pages: Power, Brightness, Presets.**
+- **Main control UI is exactly 3 pages: Power, Brightness, Presets.** (Plus a hidden Theme Selector).
 - **First-build presets are locked to exactly 4: Warm White, Soft Amber, Neutral White, Low Nightlight.** Optional RGB accent is v2 / future only.
 - **Bedside v1 uses APDS-9960 standalone gestures + VL53L4CD standalone hand-hold nightlight.** Sensor fusion is v2 / future only.
 - **VL53L4CD ESPHome support remains unverified** — see "VL53L4CD support truth" below.
@@ -158,8 +158,7 @@ The following behaviors are locked for the first build. They are owned by `docs/
 
 ### Pages
 
-- Main UI is exactly **3 pages**: Power, Brightness, Presets.
-- **No required 4th Environment page.**
+- **Main control UI is exactly 3 pages: Power, Brightness, Presets.** (Plus a hidden Theme Selector). **No required 4th Environment page.**
 
 ### Page navigation
 
@@ -182,6 +181,7 @@ The following behaviors are locked for the first build. They are owned by `docs/
 - **Power page:** knob press toggles the bedroom light group (same as tapping the center).
 - **Brightness page:** knob press returns to the Power page.
 - **Presets page:** knob press applies the currently highlighted preset.
+- **Theme Selector (any page):** long-press (>1.5s) enters the Theme Selector.
 - **While asleep:** knob press wakes only.
 
 ### Page content rules
@@ -342,12 +342,10 @@ The order matters. Do **not** jump into production firmware before validation st
    - Validate the ELECROW board revision and pinout against `hardware/elecrow_pinout.md` and the actual board silkscreen. Multiple ELECROW CrowPanel 1.28 in revisions exist.
    - Run an I2C scan on both nodes and confirm expected addresses (door-side `0x29`, `0x44`; bedside `0x39`, `0x29`).
 3. **Verify VL53L4CD ESPHome support path** before writing hold-nightlight firmware. If support is blocked, do not silently substitute VL53L0X — surface the decision to the owner first.
-4. **Start with bring-up, not production YAML.**
-   - Door-side bring-up: display, touch, encoder, backlight, TSL2591, SHT45. Confirm everything talks before adding the full LVGL UI.
-   - Bedside bring-up: APDS-9960 standalone first. VL53L4CD second, gated on the support-path verification.
-5. **Then draft production YAML in line with the locked decisions.**
-   - Door-side: 3-page LVGL (Power, Brightness, Presets), the 4 locked presets in 2×2 layout, page-swipe navigation with the 3-dot indicator, per-page knob press behavior, wake-only-first behavior, "Unavailable" badge for HA / LAN outage.
-   - Bedside: APDS-9960 standalone left/right gestures + (if support verified) VL53L4CD standalone hand-hold nightlight. **Do not implement sensor fusion in v1.**
+4. **Production door-side firmware is COMPLETE (PR #56).** `esphome/door_side_rotary.yaml` is now a multi-theme engine with 20 selectable themes, 3-page LVGL control flow (Power, Brightness, Presets), hidden Theme Selector via long-press, the 4 locked presets, page-swipe navigation, per-page knob press behavior, wake-only-first behavior, and "Unavailable" badge for HA / LAN outage. Compile-passing (0 errors, RAM 17.5%, Flash 65.5%). **Hardware validation NOT YET TESTED.**
+5. **Next steps are hardware validation.**
+   - Flash the production door-side firmware to the ELECROW board and verify display, touch, encoder, backlight, TSL2591, SHT45, LED ring, and all 20 themes on real hardware.
+   - Bedside bring-up: APDS-9960 standalone first. VL53L4CD second, gated on the support-path verification. **Do not implement sensor fusion in v1.**
 6. **Constraints to honor.**
    - No cloud dependency for normal control.
    - No required 4th Environment page.

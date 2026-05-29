@@ -23,7 +23,7 @@ Adafruit ESP32-C6 + APDS-9960 → ESPHome → Home Assistant (Raspberry Pi) → 
 
 Before beginning E2E validation, ensure the following are complete:
 
-- PR #19 (Door-side draft), PR #20 (Bedside draft), and PR #21 (Raspberry Pi guide) are merged.
+- PR #19 (Door-side draft), PR #20 (Bedside draft), PR #21 (Raspberry Pi guide), and PR #56 (Multi-theme firmware engine) are merged.
 - Raspberry Pi and Home Assistant OS are installed and running.
 - ESPHome add-on is installed in Home Assistant.
 - LocalTuya is installed and configured with your Tuya bulbs.
@@ -88,7 +88,7 @@ Use this table to validate the ELECROW door-side controller.
 | CST816 orientation | Touches map correctly to UI elements. | | NOT TESTED | |
 | Rotary CW/CCW | Rotation registers correctly. | | NOT TESTED | |
 | Rotary press | Press registers correctly. | | NOT TESTED | |
-| WS2812 5 LED ring | LEDs light up (amber when lights on). | | NOT TESTED | |
+| WS2812 5 LED ring | LEDs light up in theme-specific color when lights on. | | NOT TESTED | |
 | TSL2591 presence | Sensor detected and reports lux. | | NOT TESTED | |
 | SHT45 presence | Sensor detected and reports temp/humidity. | | NOT TESTED | |
 | Wake-only-first touch | Touch while asleep only wakes display. | | NOT TESTED | |
@@ -97,6 +97,12 @@ Use this table to validate the ELECROW door-side controller.
 | Power page toggle | Pressing knob toggles lights. | | NOT TESTED | |
 | Brightness knob adjust | Rotation changes brightness in ~5% steps. | | NOT TESTED | |
 | Brightness arc touch | **IMPLEMENTATION PENDING** (Visual only). | | NOT TESTED | |
+| Theme Selector entry | Long-press (>1.5s) enters Theme Selector. | | NOT TESTED | |
+| Theme browsing | Rotate knob to browse 20 themes. | | NOT TESTED | |
+| Theme apply | Press knob to apply selected theme. | | NOT TESTED | |
+| Theme persistence | Theme survives reboot. | | NOT TESTED | |
+| Theme LED ring color | LED ring changes color per theme. | | NOT TESTED | |
+| Theme HA diagnostic | Active theme exposed as text sensor in HA. | | NOT TESTED | |
 | Presets page | 4 presets available and selectable. | | NOT TESTED | |
 | Swipe navigation | Left/Right swipes change pages. | | NOT TESTED | |
 | 3-dot indicator | Shows active page in amber. | | NOT TESTED | |
@@ -151,6 +157,8 @@ Test the system as a user would interact with it.
 | Door preset: Soft Amber | Applies Soft Amber to group. | | NOT TESTED |
 | Door preset: Neutral White | Applies Neutral White to group. | | NOT TESTED |
 | Door preset: Low Nightlight | Applies Low Nightlight to group. | | NOT TESTED |
+| Theme switch on-device | Long-press → browse → apply theme works. | | NOT TESTED |
+| Theme persistence reboot | Selected theme persists after power cycle. | | NOT TESTED |
 | Bedside left gesture | Turns OFF `light.bedroom_group`. | | NOT TESTED |
 | Bedside right gesture | Turns ON `light.bedroom_group`. | | NOT TESTED |
 | Gesture cooldown | Rapid gestures are ignored (2s cooldown). | | NOT TESTED |

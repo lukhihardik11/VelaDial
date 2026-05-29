@@ -21,13 +21,14 @@ Bedside sensor fusion (v2 / future):
 
 ## Door-side rotary display
 
-The main door-side UI has exactly 3 primary pages:
+The main door-side UI has exactly 3 primary control pages, plus a hidden device-level theme selector:
 
 1. Power
 2. Brightness
 3. Presets
+4. Theme Selector (hidden, accessed via long-press)
 
-The main UI stays exactly 3 pages — Power, Brightness, Presets. There is **no** 4th Environment page in the first build.
+The main control UI stays exactly 3 pages — Power, Brightness, Presets. There is **no** 4th Environment page in the first build.
 
 ### Page navigation
 
@@ -116,7 +117,20 @@ These behaviors apply only when the display is already awake.
 - **Power page:** knob press toggles the bedroom light group (same as tapping the center).
 - **Brightness page:** knob press returns to the Power page.
 - **Presets page:** knob press applies the currently highlighted preset.
+- **Theme Selector (any page):** long-press (>1.5s) enters the Theme Selector.
 - **While asleep:** knob press wakes the display only; it does not toggle, apply, or navigate.
+
+### Theme Selector Flow
+
+Purpose: Switch between the 20 built-in UI themes without reflashing firmware.
+
+Flow:
+1. User long-presses the knob (>1.5s) from any awake page.
+2. Display enters Theme Selector mode.
+3. User rotates the knob to browse through the 20 available themes.
+4. User short-presses the knob to apply the selected theme.
+5. Display returns to the Power page with the new theme active.
+6. If no action is taken for 60 seconds, the selector times out and returns to the Power page without changing the theme.
 
 ### Adaptive display brightness flow
 
