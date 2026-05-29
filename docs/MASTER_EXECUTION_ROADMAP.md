@@ -191,7 +191,7 @@ The following tests must be completed and recorded as PASS before the system is 
 | Claude review package | DONE | PR #24 merged | `docs/review/claude_review_package.md` | Claude review completed |
 | UI concept direction package | DONE | PR #34 merged | `docs/ui/ui_concept_direction_matrix.md`, `docs/ui/ui_concept_shortlist.md`, `docs/ui/ui_concept_selection_criteria.md`, `docs/ui/ui_concept_notes.md`, `docs/ui/ui_visual_batch_plan.md`, `docs/ui/ui_implementation_candidates.md` | Completed |
 | UI concept prototype framework | DONE | PR #35 merged | `docs/ui/concepts/README.md`, `esphome/concepts/README.md` | Completed |
-| UI concept prototypes (1-20) | IN PROGRESS | Concepts 01-14 complete | `docs/ui/concepts/`, `esphome/concepts/` | Research and prototype all 20 concepts sequentially |
+| UI concept prototypes (1-20) | IN PROGRESS | Concepts 01-15 complete | `docs/ui/concepts/`, `esphome/concepts/` | Research and prototype all 20 concepts sequentially |
 | Concept 01: Minimal Thermostat | MERGED | PR #36 merged | `docs/ui/concepts/01_minimal_thermostat/`, `esphome/concepts/door_side_concept_01_minimal_thermostat.yaml` | Compile PASSED; merged |
 | Concept 02: SmartKnob-Inspired Arc | MERGED | PR #37 merged | `docs/ui/concepts/02_smartknob_arc/`, `esphome/concepts/door_side_concept_02_smartknob_arc.yaml` | Compile PASSED; merged |
 | Concept 03: Large Center Power Button | MERGED | PR #38 merged | `docs/ui/concepts/03_large_center_power_button/`, `esphome/concepts/door_side_concept_03_large_center_power.yaml` | Compile PASSED; merged |
@@ -205,7 +205,8 @@ The following tests must be completed and recorded as PASS before the system is 
 | Concept 11: Brightness-First UI | MERGED | PR #46 merged | `docs/ui/concepts/11_brightness_first_ui/`, `esphome/concepts/door_side_concept_11_brightness_first_ui.yaml` | Compile PASSED; IA innovation (brightness as default); merged |
 | Concept 12: Door Switch Replacement | MERGED | PR #47 merged | `docs/ui/concepts/12_door_switch_replacement/`, `esphome/concepts/door_side_concept_12_door_switch_replacement.yaml` | Compile PASSED; Full-screen power hero; guest-friendly; merged |
 | Concept 13: Lunar Phase Visualization | MERGED | PR #48 merged | `docs/ui/concepts/13_lunar_phase_visualization/`, `esphome/concepts/door_side_concept_13_lunar_phase_visualization.yaml` | Compile PASSED; Moon phase metaphor; poetic/premium; merged |
-| Concept 14: Sundial Shadow UI | IN REVIEW | PR pending | `docs/ui/concepts/14_sundial_shadow_ui/`, `esphome/concepts/door_side_concept_14_sundial_shadow_ui.yaml` | Compile PASSED; Sundial shadow metaphor; architectural/premium; Hardik to review |
+| Concept 14: Sundial Shadow UI | MERGED | PR #49 merged | `docs/ui/concepts/14_sundial_shadow_ui/`, `esphome/concepts/door_side_concept_14_sundial_shadow_ui.yaml` | Compile PASSED; Sundial shadow metaphor; architectural/premium; merged |
+| Concept 15: Tree Ring Growth Pattern | IN REVIEW | PR pending | `docs/ui/concepts/15_tree_ring_growth_pattern/`, `esphome/concepts/door_side_concept_15_tree_ring_growth_pattern.yaml` | Compile PASSED; Tree ring metaphor; organic/premium; Hardik to review |
 | Claude independent review | COMPLETED — REQUEST CHANGES | Review delivered to Hardik | n/a | Findings tracked via cleanup PR series |
 | Immediate cleanup PR | DONE | PR #25 merged | `.gitignore`, `hardware/validation_results.md`, `esphome/door_side_rotary.yaml`, `esphome/bedside_gesture.yaml`, `docs/MASTER_EXECUTION_ROADMAP.md` | Completed |
 | VL53L4CD decision recording | DONE | PR #26 merged | `docs/vl53l4cd_support_verification.md`, `docs/01_PRD.md`, `docs/05_Backend_Schema.md` | Option B recorded |
