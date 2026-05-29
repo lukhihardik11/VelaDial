@@ -1,59 +1,23 @@
 # ===========================================================================
-# VelaDial — Door-Side Rotary Controller
+# VelaDial — Door-Side Multi-Theme Engine
 # ===========================================================================
 # Hardware:  ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display (240×240)
-# Status:    DRAFT — COMPILE PASSED / HARDWARE VALIDATION PENDING
-# Version:   v1 production-oriented draft
-# Branch:    firmware/door-side-v1-draft
+# Status:    DRAFT — COMPILE PENDING / HARDWARE VALIDATION PENDING
+# Version:   v2 multi-theme engine
+# Branch:    firmware/door-side-multi-theme-engine
 # ---------------------------------------------------------------------------
 # COMPILE:   esphome compile esphome/door_side_rotary.yaml
 # FLASH:     esphome upload esphome/door_side_rotary.yaml --device /dev/ttyUSBx
 # ---------------------------------------------------------------------------
-# ACCEPTANCE TESTS (all require physical hardware):
-#   1. Display powers on, shows Power page with black background.
-#   2. Touch wakes from sleep without toggling lights.
-#   3. Knob rotation wakes from sleep without toggling lights.
-#   4. Knob press wakes from sleep without toggling lights.
-#   5. Second knob press (while awake, Power page) toggles light.bedroom_group.
-#   6. Left swipe navigates Power → Brightness → Presets → Power (wrap).
-#   7. Right swipe navigates in reverse.
-#   8. 3-dot indicator shows active page in amber.
-#   9. Brightness arc responds to knob rotation in ~5% steps.
-#       Direct arc touch/drag also updates brightness_pct and the centre
-#       label in real time via the arc's on_value trigger (exposed `x`
-#       variable per ESPHome LVGL docs). The HA round-trip fires only on
-#       release. Knob remains primary; both paths converge on the same
-#       brightness_pct global.
-#  10. Brightness knob press returns to Power page.
-#  11. Presets page shows 4 buttons; tap applies preset.
-#  12. Knob rotation on Presets page cycles highlight; press applies.
-#  13. Screen dims to ~10% after 60 s inactivity.
-#  14. WS2812 ring glows amber when lights are on (optional/verify).
-#  15. TSL2591 adaptive backlight adjusts display brightness by lux.
-# ---------------------------------------------------------------------------
-#
-# WAKE-ONLY-FIRST ENFORCEMENT
-# ============================
-# Every user input path (touch, swipe, knob rotation, knob press, arc
-# interaction, button tap) is routed through a wake guard:
-#
-#   - If display_awake == false at the moment of input:
-#       → The input ONLY wakes the display (restores backlight).
-#       → NO HA command, page navigation, or state change occurs.
-#       → The user must perform a SECOND deliberate action while awake.
-#
-#   - If display_awake == true at the moment of input:
-#       → The intended action (toggle, navigate, adjust, apply) executes.
-#       → The idle timer resets.
-#
-# Implementation:
-#   - `resume_on_input` is set to FALSE to prevent LVGL from auto-resuming
-#     and simultaneously triggering widget actions on the wake input.
-#   - All LVGL widget on_click, on_value, on_release, and page on_swipe_*
-#     handlers call guarded scripts that check display_awake before acting.
-#   - The touchscreen on_touch trigger handles explicit wake on any touch.
-#   - Knob rotation and knob press handlers already had guards (retained).
-#
+# ARCHITECTURE:
+#   - One firmware, 20 selectable UI themes
+#   - Shared control logic (power, brightness, presets, wake, sleep)
+#   - Theme-specific rendering via render_theme script
+#   - Theme selector: long-press knob to enter, rotate to browse, press to apply
+#   - Selected theme persists across reboots (restore_value: yes)
+#   - All themes control light.bedroom_group
+#   - 4 locked presets: Warm White, Soft Amber, Neutral White, Low Nightlight
+#   - Wake-only-first enforcement on all inputs
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
@@ -77,12 +41,13 @@ esphome:
   on_boot:
     priority: 800
     then:
-      - logger.log: "VelaDial boot: initializing"
+      - logger.log: "VelaDial boot: multi-theme engine initializing"
       - light.turn_on:
           id: back_light
           brightness: 80%
       - output.turn_off: power_light
       - delay: 200ms
+      - script.execute: render_theme
       - script.execute: screen_idle_timer
       - script.execute: update_page_indicator
 
@@ -116,7 +81,7 @@ wifi:
 captive_portal:
 
 # ---------------------------------------------------------------------------
-# PSRAM — Source confirmed (elecrow_source_confirmation_matrix.md)
+# PSRAM
 # ---------------------------------------------------------------------------
 psram:
   mode: octal
@@ -124,9 +89,6 @@ psram:
 
 # ---------------------------------------------------------------------------
 # I2C buses
-# Bus 0: Touch (CST816D at 0x15) — GPIO6/GPIO7
-# Bus 1: Sensors (TSL2591 at 0x29, SHT45 at 0x44) — GPIO38/GPIO39
-#         HARDWARE TEST PENDING — sensor bus uses OLED SDA/SCL pins
 # ---------------------------------------------------------------------------
 i2c:
   - id: i2c_touch
@@ -151,21 +113,19 @@ spi:
   clk_pin: GPIO10
 
 # ---------------------------------------------------------------------------
-# Outputs — Source confirmed GPIOs
+# Outputs
 # ---------------------------------------------------------------------------
 output:
   - platform: ledc
     pin: GPIO46
     id: gpio_backlight_pwm
-    # Source confirmed: GPIO46 = backlight PWM
 
   - platform: gpio
     id: power_light
     pin: GPIO40
-    # Source confirmed: GPIO40 = power indicator LED
 
 # ---------------------------------------------------------------------------
-# Backlight — monochromatic light for ESPHome brightness control
+# Backlight + LED Ring
 # ---------------------------------------------------------------------------
 light:
   - platform: monochromatic
@@ -175,9 +135,6 @@ light:
     restore_mode: ALWAYS_ON
     default_transition_length: 500ms
 
-  # WS2812 LED Ring — 5 LEDs on GPIO48
-  # Source confirmed: GPIO48, count 5
-  # HARDWARE TEST PENDING — LED order and color mapping unverified
   - platform: esp32_rmt_led_strip
     id: led_ring
     name: "LED Ring"
@@ -190,14 +147,6 @@ light:
 
 # ---------------------------------------------------------------------------
 # Touchscreen — CST816D
-# Source confirmed: SDA=6, SCL=7, INT=5, RST=13, addr=0x15
-# HARDWARE TEST PENDING — touch transform may need adjustment
-#
-# WAKE-ONLY-FIRST: on_touch triggers wake_screen_from_touch which sets
-# display_awake=true but does NOT perform any action. The LVGL widget
-# handlers then check display_awake; since it was just set to true by the
-# SAME input event, we use a "was_asleep" latch (touch_woke_this_cycle)
-# to block the action on the wake-triggering touch.
 # ---------------------------------------------------------------------------
 touchscreen:
   platform: cst816
@@ -215,7 +164,6 @@ touchscreen:
 
 # ---------------------------------------------------------------------------
 # Display — GC9A01A (240×240 round)
-# Source confirmed: CS=9, DC=3, RST=14, invert_colors=true
 # ---------------------------------------------------------------------------
 display:
   - platform: ili9xxx
@@ -245,12 +193,9 @@ font:
   - file: "gfonts://Roboto"
     id: roboto32
     size: 32
-  # NOTE: Material Symbols font removed — not available via gfonts://
-  # Using text labels for power icon instead
 
 # ---------------------------------------------------------------------------
-# Rotary Encoder — Source confirmed: A=45, B=42
-# HARDWARE TEST PENDING — direction may need swap
+# Rotary Encoder
 # ---------------------------------------------------------------------------
 sensor:
   - platform: rotary_encoder
@@ -274,8 +219,7 @@ sensor:
     on_anticlockwise:
       - script.execute: handle_knob_ccw
 
-  # TSL2591 — Ambient light sensor for adaptive backlight
-  # HARDWARE TEST PENDING — sensor presence on this board revision unverified
+  # TSL2591 — Ambient light sensor
   - platform: tsl2591
     id: ambient_lux
     i2c_id: i2c_sensors
@@ -288,9 +232,7 @@ sensor:
         then:
           - script.execute: adaptive_backlight
 
-  # SHT45 — Temperature/Humidity (secondary diagnostics only)
-  # HARDWARE TEST PENDING — sensor presence unverified
-  # Included as diagnostic entity; NOT used for any v1 UI or control logic
+  # SHT45 — Temperature/Humidity
   - platform: sht4x
     i2c_id: i2c_sensors
     address: 0x44
@@ -306,9 +248,6 @@ sensor:
 # Binary Sensors
 # ---------------------------------------------------------------------------
 binary_sensor:
-  # Rotary encoder press — Source confirmed: GPIO41
-  # WAKE-ONLY-FIRST: routed through handle_knob_press which checks
-  # display_awake before performing any action.
   - platform: gpio
     pin:
       number: GPIO41
@@ -320,8 +259,13 @@ binary_sensor:
     name: "Rotary Button"
     on_press:
       - script.execute: handle_knob_press
+    on_multi_click:
+      # Long press (>1.5s) = enter/exit theme selector
+      - timing:
+          - ON for at least 1.5s
+        then:
+          - script.execute: toggle_theme_selector
 
-  # Home Assistant connection status — for "Unavailable" UI state
   - platform: status
     id: api_connected
     name: "API Connected"
@@ -330,9 +274,23 @@ binary_sensor:
         - script.execute: update_connection_status
 
 # ---------------------------------------------------------------------------
-# Globals — state tracking
+# Globals — shared state
 # ---------------------------------------------------------------------------
 globals:
+  - id: active_theme
+    type: int
+    initial_value: "0"
+    restore_value: yes
+    # 0-19 = theme index, persists across reboots
+
+  - id: theme_selector_active
+    type: bool
+    initial_value: "false"
+
+  - id: theme_preview_index
+    type: int
+    initial_value: "0"
+
   - id: display_awake
     type: bool
     initial_value: "true"
@@ -340,41 +298,34 @@ globals:
   - id: current_page
     type: int
     initial_value: "0"
-    # 0 = Power, 1 = Brightness, 2 = Presets
+    # 0=Power, 1=Brightness, 2=Presets, 3=ThemeSelector
 
   - id: brightness_pct
     type: int
     initial_value: "50"
-    # Tracks current brightness 1-100
 
   - id: active_preset
     type: int
     initial_value: "-1"
-    # -1 = none, 0-3 = preset index
 
   - id: highlighted_preset
     type: int
     initial_value: "0"
-    # Which preset is highlighted by encoder on Presets page
 
   - id: lights_on
     type: bool
     initial_value: "false"
 
-  # WAKE-ONLY-FIRST latch: set true when a touch event wakes the display.
-  # Cleared after a short delay. While true, all LVGL widget handlers
-  # (on_click, on_value, on_release, on_swipe) will refuse to act.
   - id: touch_woke_this_cycle
+    type: bool
+    initial_value: "false"
+
+  - id: long_press_handled
     type: bool
     initial_value: "false"
 
 # ---------------------------------------------------------------------------
 # LVGL Configuration
-#
-# WAKE-ONLY-FIRST: resume_on_input is FALSE.
-# We handle wake explicitly via touchscreen on_touch and knob handlers.
-# This prevents LVGL from auto-resuming and simultaneously dispatching
-# widget events (on_click, on_value) on the same input that wakes.
 # ---------------------------------------------------------------------------
 lvgl:
   displays:
@@ -388,7 +339,7 @@ lvgl:
   default_font: roboto24
   color_depth: 16
   buffer_size: 25%
-  page_wrap: true
+  page_wrap: false
   resume_on_input: false
 
   style_definitions:
@@ -399,22 +350,8 @@ lvgl:
       border_width: 0
       pad_all: 0
 
-    - id: style_dot_inactive
-      bg_color: 0x444444
-      bg_opa: COVER
-      radius: 5
-      width: 8
-      height: 8
-
-    - id: style_dot_active
-      bg_color: 0xFFB300
-      bg_opa: COVER
-      radius: 5
-      width: 10
-      height: 10
-
   # =========================================================================
-  # Top layer — always-visible page indicator (3 dots)
+  # Top layer — page indicator (3 dots)
   # =========================================================================
   top_layer:
     widgets:
@@ -462,20 +399,37 @@ lvgl:
                 clickable: false
 
   # =========================================================================
-  # Pages
+  # PAGES
   # =========================================================================
   pages:
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
     # PAGE 0: Power
-    # WAKE-ONLY-FIRST: power_btn on_click calls guarded_power_toggle
-    # which checks display_awake AND touch_woke_this_cycle before acting.
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
     - id: power_page
       bg_color: 0x000000
       bg_opa: COVER
       widgets:
-        # Power icon / button area
-        - button:
+        # Theme-specific decorative elements (hidden/shown per theme)
+        # Outer ring decoration
+        - arc:
+            id: pw_deco_arc
+            align: CENTER
+            width: 230
+            height: 230
+            start_angle: 0
+            end_angle: 360
+            min_value: 0
+            max_value: 100
+            value: 100
+            indicator:
+              bg_color: 0x222222
+              width: 3
+            bg_opa: TRANSP
+            border_width: 0
+            clickable: false
+
+        # Main power button area
+        - obj:
             id: power_btn
             align: CENTER
             width: 120
@@ -484,32 +438,30 @@ lvgl:
             bg_color: 0x1A1A1A
             border_color: 0x333333
             border_width: 2
-            checkable: true
+            clickable: true
             group: main_group
-            checked:
-              bg_color: 0x1B3D00
-              border_color: 0x4CAF50
-            widgets:
-              - label:
-                  id: power_icon_label
-                  align: CENTER
-                  text_font: roboto32
-                  text_color: 0xFFFFFF
-                  text: "POWER"
             on_click:
-              # WAKE-ONLY-FIRST guard: action blocked if asleep or wake-touch
               - script.execute: guarded_power_toggle
 
-        # Status label
+        # Power icon/label
+        - label:
+            id: power_icon_label
+            align: CENTER
+            y: -10
+            text_font: roboto32
+            text_color: 0xFFFFFF
+            text: "OFF"
+
+        # Power status sublabel
         - label:
             id: power_status_label
             align: CENTER
-            y: 80
+            y: 30
             text_font: roboto16
-            text_color: 0xAAAAAA
-            text: "Off"
+            text_color: 0x888888
+            text: ""
 
-        # Connection status (subtle, top)
+        # Connection status
         - label:
             id: connection_label
             align: TOP_MID
@@ -518,22 +470,46 @@ lvgl:
             text_color: 0x666666
             text: ""
 
-      # WAKE-ONLY-FIRST: swipe handlers call guarded_swipe_* scripts
+        # Theme name indicator (subtle, bottom)
+        - label:
+            id: pw_theme_name
+            align: BOTTOM_MID
+            y: -30
+            text_font: roboto16
+            text_color: 0x333333
+            text: "Minimal"
+
       on_swipe_left:
         - script.execute: guarded_swipe_left
-
       on_swipe_right:
         - script.execute: guarded_swipe_right
 
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
     # PAGE 1: Brightness
-    # WAKE-ONLY-FIRST: arc on_value and on_release call guarded scripts.
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
     - id: brightness_page
       bg_color: 0x000000
       bg_opa: COVER
       widgets:
-        # Arc for brightness control
+        # Decorative sub-arc (theme-specific)
+        - arc:
+            id: br_deco_arc
+            align: CENTER
+            width: 220
+            height: 220
+            start_angle: 135
+            end_angle: 45
+            min_value: 0
+            max_value: 100
+            value: 0
+            indicator:
+              bg_color: 0x1A1A1A
+              width: 6
+            bg_opa: TRANSP
+            border_width: 0
+            clickable: false
+
+        # Main brightness arc
         - arc:
             id: brightness_arc
             align: CENTER
@@ -555,28 +531,6 @@ lvgl:
               height: 16
             bg_color: 0x333333
             bg_opa: COVER
-            # The arc's on_value trigger exposes the new value as `x` (per
-            # ESPHome LVGL widgets docs — https://esphome.io/components/lvgl/widgets/).
-            # The lambda is inlined here rather than routed through a
-            # `mode: single` script: LVGL fires on_value continuously
-            # during drag, and a single-mode script can drop intermediate
-            # events before the prior invocation finishes.
-            #
-            # WAKE-ONLY-FIRST is enforced inline. If the display was
-            # asleep when the user first touched the arc, the touchscreen
-            # on_touch handler sets `touch_woke_this_cycle=true` for
-            # ~500ms; while that latch is up, the inline `if:` rejects
-            # the action and only the wake itself happens. After the
-            # latch clears, subsequent on_value ticks update
-            # brightness_pct + label in real time. The HA round-trip
-            # still happens exactly once per drag, via guarded_arc_release
-            # on touch release.
-            #
-            # Idempotent under knob and HA-state-import paths: those also
-            # call `lvgl.arc.update` which fires on_value, but the inline
-            # lambda just re-writes the same brightness_pct value and
-            # re-renders the same label string — no behavioural side
-            # effect, only a small redundant write.
             on_value:
               then:
                 - if:
@@ -597,10 +551,9 @@ lvgl:
                       - script.execute: screen_idle_timer
             on_release:
               then:
-                # WAKE-ONLY-FIRST: only send HA command if awake
                 - script.execute: guarded_arc_release
 
-        # Center percentage label
+        # Center percentage
         - label:
             id: brightness_value_label
             align: CENTER
@@ -617,31 +570,26 @@ lvgl:
             text_color: 0x888888
             text: "Brightness"
 
-      # WAKE-ONLY-FIRST: swipe handlers call guarded scripts
       on_swipe_left:
         - script.execute: guarded_swipe_left
-
       on_swipe_right:
         - script.execute: guarded_swipe_right
 
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
     # PAGE 2: Presets
-    # WAKE-ONLY-FIRST: all preset button on_click handlers call
-    # guarded_preset_apply which checks display_awake before acting.
-    # -----------------------------------------------------------------------
+    # -------------------------------------------------------------------
     - id: presets_page
       bg_color: 0x000000
       bg_opa: COVER
       widgets:
-        # Title
         - label:
+            id: presets_title
             align: TOP_MID
             y: 25
             text_font: roboto16
             text_color: 0x888888
             text: "Presets"
 
-        # 2×2 grid container
         - obj:
             align: CENTER
             width: 180
@@ -656,7 +604,6 @@ lvgl:
               flex_align_cross: CENTER
               flex_align_track: SPACE_EVENLY
             widgets:
-              # Preset 0: Warm White
               - button:
                   id: preset_btn_0
                   width: 80
@@ -672,17 +619,16 @@ lvgl:
                     border_width: 3
                   widgets:
                     - label:
+                        id: preset_label_0
                         align: CENTER
                         text_font: roboto16
                         text_color: 0xFFFFFF
                         text: "Warm"
                   on_click:
-                    # WAKE-ONLY-FIRST guard
                     - script.execute:
                         id: guarded_preset_apply
                         preset_index: 0
 
-              # Preset 1: Soft Amber
               - button:
                   id: preset_btn_1
                   width: 80
@@ -698,17 +644,16 @@ lvgl:
                     border_width: 3
                   widgets:
                     - label:
+                        id: preset_label_1
                         align: CENTER
                         text_font: roboto16
                         text_color: 0xFFFFFF
                         text: "Amber"
                   on_click:
-                    # WAKE-ONLY-FIRST guard
                     - script.execute:
                         id: guarded_preset_apply
                         preset_index: 1
 
-              # Preset 2: Neutral White
               - button:
                   id: preset_btn_2
                   width: 80
@@ -724,17 +669,16 @@ lvgl:
                     border_width: 3
                   widgets:
                     - label:
+                        id: preset_label_2
                         align: CENTER
                         text_font: roboto16
                         text_color: 0xFFFFFF
                         text: "Neutral"
                   on_click:
-                    # WAKE-ONLY-FIRST guard
                     - script.execute:
                         id: guarded_preset_apply
                         preset_index: 2
 
-              # Preset 3: Low Nightlight
               - button:
                   id: preset_btn_3
                   width: 80
@@ -750,24 +694,79 @@ lvgl:
                     border_width: 3
                   widgets:
                     - label:
+                        id: preset_label_3
                         align: CENTER
                         text_font: roboto16
                         text_color: 0xFFFFFF
                         text: "Night"
                   on_click:
-                    # WAKE-ONLY-FIRST guard
                     - script.execute:
                         id: guarded_preset_apply
                         preset_index: 3
 
-      # WAKE-ONLY-FIRST: swipe handlers call guarded scripts
       on_swipe_left:
         - script.execute: guarded_swipe_left
-
       on_swipe_right:
         - script.execute: guarded_swipe_right
 
-  # LVGL idle handling — dim after 60s, set display_awake=false
+    # -------------------------------------------------------------------
+    # PAGE 3: Theme Selector
+    # -------------------------------------------------------------------
+    - id: theme_selector_page
+      bg_color: 0x0A0A0A
+      bg_opa: COVER
+      widgets:
+        - label:
+            id: ts_header
+            align: TOP_MID
+            y: 30
+            text_font: roboto16
+            text_color: 0x666666
+            text: "THEME SELECTOR"
+
+        - label:
+            id: ts_index
+            align: CENTER
+            y: -40
+            text_font: roboto24
+            text_color: 0xFFB300
+            text: "1 / 20"
+
+        - label:
+            id: ts_name
+            align: CENTER
+            y: 0
+            text_font: roboto24
+            text_color: 0xFFFFFF
+            text: "Minimal Thermostat"
+
+        - label:
+            id: ts_instruction
+            align: CENTER
+            y: 60
+            text_font: roboto16
+            text_color: 0x555555
+            text: "Press to apply"
+
+        # Decorative ring
+        - arc:
+            id: ts_ring
+            align: CENTER
+            width: 230
+            height: 230
+            start_angle: 0
+            end_angle: 360
+            min_value: 0
+            max_value: 20
+            value: 1
+            indicator:
+              bg_color: 0xFFB300
+              width: 4
+            bg_opa: TRANSP
+            border_width: 0
+            clickable: false
+
+  # LVGL idle handling
   on_idle:
     - timeout: 60s
       then:
@@ -782,30 +781,10 @@ lvgl:
 # ---------------------------------------------------------------------------
 # Scripts
 # ===========================================================================
-# WAKE-ONLY-FIRST ARCHITECTURE:
-#
-# Layer 1 — Raw input handlers (touchscreen on_touch, knob on_cw/ccw,
-#           knob on_press):
-#   These check display_awake. If asleep, they call wake_screen and exit.
-#   If awake, they perform the intended action.
-#
-# Layer 2 — LVGL widget handlers (on_click, on_value, on_release,
-#           on_swipe_left, on_swipe_right):
-#   These call "guarded_*" scripts that check BOTH display_awake AND
-#   touch_woke_this_cycle. The latch prevents the wake-triggering touch
-#   from also firing the widget action in the same event cycle.
-#
-# This dual-layer approach ensures:
-#   - Knob inputs: guarded at Layer 1 (knob handlers check display_awake)
-#   - Touch inputs: guarded at Layer 2 (widget handlers check latch)
-#   - No HA command or navigation ever fires on the wake input itself.
-# ===========================================================================
 script:
   # =========================================================================
   # WAKE SCRIPTS
   # =========================================================================
-
-  # --- Wake from touch (sets latch to block same-cycle widget actions) ---
   - id: wake_screen_from_touch
     mode: restart
     then:
@@ -813,7 +792,6 @@ script:
           condition:
             lambda: 'return !id(display_awake);'
           then:
-            # Display was asleep: wake it and set the latch
             - lambda: |-
                 id(display_awake) = true;
                 id(touch_woke_this_cycle) = true;
@@ -822,17 +800,12 @@ script:
                 brightness: 80%
                 transition_length: 300ms
             - lvgl.resume:
-            - logger.log: "Wake (touch): display woken, action blocked this cycle"
-            # Clear latch after 500ms — enough time for the LVGL event to
-            # propagate and be rejected by guarded handlers
             - delay: 500ms
             - lambda: |-
                 id(touch_woke_this_cycle) = false;
           else:
-            # Display already awake: reset idle timer on any touch
             - script.execute: screen_idle_timer
 
-  # --- Wake from knob (no latch needed; knob handlers have their own guard) ---
   - id: wake_screen_from_knob
     mode: restart
     then:
@@ -847,9 +820,7 @@ script:
                 brightness: 80%
                 transition_length: 300ms
             - lvgl.resume:
-            - logger.log: "Wake (knob): display woken, action blocked this cycle"
 
-  # --- Screen idle timer ---
   - id: screen_idle_timer
     mode: restart
     then:
@@ -861,28 +832,126 @@ script:
           brightness: 10%
           transition_length: 1s
       - lvgl.pause:
-      - logger.log: "Idle: display sleeping (timer)"
+
+  # =========================================================================
+  # THEME SELECTOR SCRIPTS
+  # =========================================================================
+  - id: toggle_theme_selector
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(display_awake);'
+          then:
+            - script.execute: wake_screen_from_knob
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(theme_selector_active);'
+                then:
+                  # Exit theme selector without applying
+                  - lambda: |-
+                      id(theme_selector_active) = false;
+                      id(current_page) = 0;
+                  - lvgl.page.show:
+                      id: power_page
+                      animation: MOVE_RIGHT
+                      time: 200ms
+                  - script.execute: update_page_indicator
+                  - lvgl.widget.update:
+                      id: page_indicator
+                      hidden: false
+                else:
+                  # Enter theme selector
+                  - lambda: |-
+                      id(theme_selector_active) = true;
+                      id(theme_preview_index) = id(active_theme);
+                      id(long_press_handled) = true;
+                  - lvgl.widget.update:
+                      id: page_indicator
+                      hidden: true
+                  - lvgl.page.show:
+                      id: theme_selector_page
+                      animation: MOVE_LEFT
+                      time: 200ms
+                  - script.execute: update_theme_selector_display
+
+  - id: update_theme_selector_display
+    mode: single
+    then:
+      - lvgl.label.update:
+          id: ts_index
+          text: !lambda |-
+            static char buf[12];
+            snprintf(buf, sizeof(buf), "%d / 20", id(theme_preview_index) + 1);
+            return buf;
+      - lvgl.label.update:
+          id: ts_name
+          text: !lambda |-
+            static const char* names[] = {
+              "Minimal Thermostat",
+              "SmartKnob Arc",
+              "Large Center Power",
+              "Single-Page Simple",
+              "Preset Ring",
+              "Night Mode Ultra-Min",
+              "Text-First Utility",
+              "Apple Watch Complic.",
+              "LED-Ring Status",
+              "Three-Screen Carousel",
+              "Brightness-First",
+              "Door Switch Replace",
+              "Lunar Phase",
+              "Sundial Shadow",
+              "Tree Ring Growth",
+              "Topographic Contour",
+              "Iris Aperture",
+              "Radar Sweep",
+              "Vinyl DJ Crossfader",
+              "Eclipse Corona"
+            };
+            int idx = id(theme_preview_index);
+            if (idx < 0) idx = 0;
+            if (idx > 19) idx = 19;
+            return names[idx];
+      - lvgl.arc.update:
+          id: ts_ring
+          value: !lambda 'return id(theme_preview_index) + 1;'
+
+  - id: apply_theme_from_selector
+    mode: single
+    then:
+      - lambda: |-
+          id(active_theme) = id(theme_preview_index);
+          id(theme_selector_active) = false;
+          id(current_page) = 0;
+      - lvgl.page.show:
+          id: power_page
+          animation: MOVE_RIGHT
+          time: 200ms
+      - lvgl.widget.update:
+          id: page_indicator
+          hidden: false
+      - script.execute: render_theme
+      - script.execute: update_page_indicator
+      - script.execute: update_led_ring
+      - logger.log:
+          format: "Theme applied: %d"
+          args: ['id(active_theme)']
 
   # =========================================================================
   # GUARDED TOUCH/WIDGET HANDLERS
-  # These are called by LVGL widget events. They enforce wake-only-first
-  # by checking both display_awake and touch_woke_this_cycle.
   # =========================================================================
-
-  # --- Guarded power toggle (called by power_btn on_click) ---
   - id: guarded_power_toggle
     mode: single
     then:
       - if:
           condition:
-            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle) && !id(theme_selector_active);'
           then:
             - script.execute: screen_idle_timer
             - script.execute: handle_power_toggle
-          else:
-            - logger.log: "Blocked: power toggle rejected (wake-only-first)"
 
-  # --- Guarded preset apply (called by preset buttons on_click) ---
   - id: guarded_preset_apply
     mode: single
     parameters:
@@ -890,22 +959,19 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle) && !id(theme_selector_active);'
           then:
             - script.execute: screen_idle_timer
             - script.execute:
                 id: apply_preset
                 preset_index: !lambda 'return preset_index;'
-          else:
-            - logger.log: "Blocked: preset apply rejected (wake-only-first)"
 
-  # --- Guarded swipe left (called by all pages on_swipe_left) ---
   - id: guarded_swipe_left
     mode: single
     then:
       - if:
           condition:
-            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle) && !id(theme_selector_active);'
           then:
             - script.execute: screen_idle_timer
             - lvgl.page.next:
@@ -916,17 +982,13 @@ script:
                 if (p > 2) p = 0;
                 id(current_page) = p;
             - script.execute: update_page_indicator
-            - script.execute: on_page_enter
-          else:
-            - logger.log: "Blocked: swipe left rejected (wake-only-first)"
 
-  # --- Guarded swipe right (called by all pages on_swipe_right) ---
   - id: guarded_swipe_right
     mode: single
     then:
       - if:
           condition:
-            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle) && !id(theme_selector_active);'
           then:
             - script.execute: screen_idle_timer
             - lvgl.page.previous:
@@ -937,20 +999,7 @@ script:
                 if (p < 0) p = 2;
                 id(current_page) = p;
             - script.execute: update_page_indicator
-            - script.execute: on_page_enter
-          else:
-            - logger.log: "Blocked: swipe right rejected (wake-only-first)"
 
-  # --- Guarded arc release (called by brightness_arc on_release) ---
-  # The arc's on_value handler (inlined in the arc widget definition above)
-  # updates brightness_pct and the visible label in real time as the user
-  # drags. This handler fires once on touch release and pushes the final
-  # brightness value to Home Assistant — keeping the HA round-trip to one
-  # call per gesture, per the ESPHome LVGL "use on_release for the final
-  # value" guidance. Knob rotation also updates brightness_pct + the arc
-  # (via lvgl.arc.update); the same on_value path then reconciles the
-  # label, and send_brightness_debounced handles the HA call from the knob
-  # path independently.
   - id: guarded_arc_release
     mode: single
     then:
@@ -960,14 +1009,10 @@ script:
           then:
             - script.execute: screen_idle_timer
             - script.execute: send_brightness
-          else:
-            - logger.log: "Blocked: arc release rejected (wake-only-first)"
 
   # =========================================================================
-  # KNOB HANDLERS (Layer 1 guards — check display_awake directly)
+  # KNOB HANDLERS
   # =========================================================================
-
-  # --- Handle knob clockwise ---
   - id: handle_knob_cw
     mode: single
     then:
@@ -975,15 +1020,23 @@ script:
           condition:
             lambda: 'return !id(display_awake);'
           then:
-            # WAKE-ONLY-FIRST: knob rotation while asleep = wake only
             - script.execute: wake_screen_from_knob
           else:
             - script.execute: screen_idle_timer
             - if:
                 condition:
-                  lambda: 'return id(current_page) == 1;'
+                  lambda: 'return id(theme_selector_active);'
                 then:
-                  # Brightness page: increase by 5%
+                  # Theme selector: next theme
+                  - lambda: |-
+                      int idx = id(theme_preview_index) + 1;
+                      if (idx > 19) idx = 0;
+                      id(theme_preview_index) = idx;
+                  - script.execute: update_theme_selector_display
+            - if:
+                condition:
+                  lambda: 'return !id(theme_selector_active) && id(current_page) == 1;'
+                then:
                   - lambda: |-
                       int val = id(brightness_pct) + 5;
                       if (val > 100) val = 100;
@@ -1000,16 +1053,14 @@ script:
                   - script.execute: send_brightness_debounced
             - if:
                 condition:
-                  lambda: 'return id(current_page) == 2;'
+                  lambda: 'return !id(theme_selector_active) && id(current_page) == 2;'
                 then:
-                  # Presets page: cycle highlight forward
                   - lambda: |-
                       int h = id(highlighted_preset) + 1;
                       if (h > 3) h = 0;
                       id(highlighted_preset) = h;
                   - script.execute: update_preset_highlight
 
-  # --- Handle knob counter-clockwise ---
   - id: handle_knob_ccw
     mode: single
     then:
@@ -1017,15 +1068,22 @@ script:
           condition:
             lambda: 'return !id(display_awake);'
           then:
-            # WAKE-ONLY-FIRST: knob rotation while asleep = wake only
             - script.execute: wake_screen_from_knob
           else:
             - script.execute: screen_idle_timer
             - if:
                 condition:
-                  lambda: 'return id(current_page) == 1;'
+                  lambda: 'return id(theme_selector_active);'
                 then:
-                  # Brightness page: decrease by 5%
+                  - lambda: |-
+                      int idx = id(theme_preview_index) - 1;
+                      if (idx < 0) idx = 19;
+                      id(theme_preview_index) = idx;
+                  - script.execute: update_theme_selector_display
+            - if:
+                condition:
+                  lambda: 'return !id(theme_selector_active) && id(current_page) == 1;'
+                then:
                   - lambda: |-
                       int val = id(brightness_pct) - 5;
                       if (val < 1) val = 1;
@@ -1042,16 +1100,14 @@ script:
                   - script.execute: send_brightness_debounced
             - if:
                 condition:
-                  lambda: 'return id(current_page) == 2;'
+                  lambda: 'return !id(theme_selector_active) && id(current_page) == 2;'
                 then:
-                  # Presets page: cycle highlight backward
                   - lambda: |-
                       int h = id(highlighted_preset) - 1;
                       if (h < 0) h = 3;
                       id(highlighted_preset) = h;
                   - script.execute: update_preset_highlight
 
-  # --- Handle knob press ---
   - id: handle_knob_press
     mode: single
     then:
@@ -1059,42 +1115,48 @@ script:
           condition:
             lambda: 'return !id(display_awake);'
           then:
-            # WAKE-ONLY-FIRST: knob press while asleep = wake only
             - script.execute: wake_screen_from_knob
           else:
-            - script.execute: screen_idle_timer
             - if:
                 condition:
-                  lambda: 'return id(current_page) == 0;'
+                  lambda: 'return id(long_press_handled);'
                 then:
-                  # Power page: toggle light group
-                  - script.execute: handle_power_toggle
-            - if:
-                condition:
-                  lambda: 'return id(current_page) == 1;'
-                then:
-                  # Brightness page: return to Power page
-                  - lvgl.page.show:
-                      id: power_page
-                      animation: MOVE_RIGHT
-                      time: 200ms
-                  - lambda: |-
-                      id(current_page) = 0;
-                  - script.execute: update_page_indicator
-            - if:
-                condition:
-                  lambda: 'return id(current_page) == 2;'
-                then:
-                  # Presets page: apply highlighted preset
-                  - script.execute:
-                      id: apply_preset
-                      preset_index: !lambda 'return id(highlighted_preset);'
+                  # Long press was just handled, clear the flag and skip
+                  - lambda: 'id(long_press_handled) = false;'
+                else:
+                  - script.execute: screen_idle_timer
+                  - if:
+                      condition:
+                        lambda: 'return id(theme_selector_active);'
+                      then:
+                        # In theme selector: apply selected theme
+                        - script.execute: apply_theme_from_selector
+                  - if:
+                      condition:
+                        lambda: 'return !id(theme_selector_active) && id(current_page) == 0;'
+                      then:
+                        - script.execute: handle_power_toggle
+                  - if:
+                      condition:
+                        lambda: 'return !id(theme_selector_active) && id(current_page) == 1;'
+                      then:
+                        - lvgl.page.show:
+                            id: power_page
+                            animation: MOVE_RIGHT
+                            time: 200ms
+                        - lambda: 'id(current_page) = 0;'
+                        - script.execute: update_page_indicator
+                  - if:
+                      condition:
+                        lambda: 'return !id(theme_selector_active) && id(current_page) == 2;'
+                      then:
+                        - script.execute:
+                            id: apply_preset
+                            preset_index: !lambda 'return id(highlighted_preset);'
 
   # =========================================================================
-  # ACTION SCRIPTS (only called after wake guard passes)
+  # ACTION SCRIPTS
   # =========================================================================
-
-  # --- Toggle power ---
   - id: handle_power_toggle
     mode: single
     then:
@@ -1102,9 +1164,7 @@ script:
           action: light.toggle
           data:
             entity_id: ${light_group}
-      - logger.log: "Action: light.toggle sent"
 
-  # --- Send brightness (immediate) ---
   - id: send_brightness
     mode: single
     then:
@@ -1113,33 +1173,23 @@ script:
           data:
             entity_id: ${light_group}
             brightness_pct: !lambda 'return id(brightness_pct);'
-      - logger.log:
-          format: "Action: brightness set to %d%%"
-          args: ['id(brightness_pct)']
 
-  # --- Send brightness (debounced — waits 300ms after last call) ---
   - id: send_brightness_debounced
     mode: restart
     then:
       - delay: 300ms
       - script.execute: send_brightness
 
-  # --- Apply preset ---
   - id: apply_preset
     mode: single
     parameters:
       preset_index: int
     then:
-      - lambda: |-
-          id(active_preset) = preset_index;
+      - lambda: 'id(active_preset) = preset_index;'
       - if:
           condition:
             lambda: 'return preset_index == 0;'
           then:
-            # Warm White: color_temp 370 mireds (~2700K), brightness 100%
-            # NOTE: homeassistant.action `data:` values must be strings per
-            # ESPHome schema. CI failure in PR #30 confirmed this; PR #25's
-            # numeric conversion was reverted here.
             - homeassistant.action:
                 action: light.turn_on
                 data:
@@ -1150,7 +1200,6 @@ script:
           condition:
             lambda: 'return preset_index == 1;'
           then:
-            # Soft Amber: color_temp 454 mireds (~2200K), brightness 70%
             - homeassistant.action:
                 action: light.turn_on
                 data:
@@ -1161,7 +1210,6 @@ script:
           condition:
             lambda: 'return preset_index == 2;'
           then:
-            # Neutral White: color_temp 250 mireds (~4000K), brightness 100%
             - homeassistant.action:
                 action: light.turn_on
                 data:
@@ -1172,7 +1220,6 @@ script:
           condition:
             lambda: 'return preset_index == 3;'
           then:
-            # Low Nightlight: color_temp 454 mireds (~2200K), brightness 5%
             - homeassistant.action:
                 action: light.turn_on
                 data:
@@ -1181,15 +1228,182 @@ script:
                   brightness_pct: "5"
       - script.execute: update_preset_buttons
       - script.execute: update_led_ring
+
+  # =========================================================================
+  # THEME RENDERING ENGINE
+  # =========================================================================
+  # This is the core of the multi-theme system. It updates widget colors,
+  # sizes, labels, and visibility based on active_theme.
+  # =========================================================================
+  - id: render_theme
+    mode: single
+    then:
+      - lambda: |-
+          // Theme color palettes: [primary, secondary, accent, bg_tint]
+          // Each theme defines its visual identity through colors
+          static const uint32_t theme_colors[][4] = {
+            {0x4FC3F7, 0x222222, 0xFFFFFF, 0x0A0A0A},  // 0: Minimal Thermostat (ice blue)
+            {0xFF6B35, 0x333333, 0xFFFFFF, 0x111111},  // 1: SmartKnob Arc (orange)
+            {0x4CAF50, 0x1E3A1E, 0xFFFFFF, 0x0D0D0D},  // 2: Large Center Power (green)
+            {0xFFB74D, 0x222222, 0xFFFFFF, 0x0A0A0A},  // 3: Single-Page Simple (warm)
+            {0xFFB000, 0x1A1A1A, 0xFFFFFF, 0x121212},  // 4: Preset Ring (amber)
+            {0xFF4400, 0x0A0A0A, 0x333333, 0x050505},  // 5: Night Mode (deep red)
+            {0xFFB000, 0x1A1A1A, 0xFFFFFF, 0x0A0A0A},  // 6: Text-First (amber)
+            {0x4FC3F7, 0x222222, 0x66BB6A, 0x000000},  // 7: Apple Watch (blue+green)
+            {0xFFB000, 0x1A1A1A, 0xFF8C00, 0x0A0A0A},  // 8: LED-Ring Status (amber)
+            {0xFFB000, 0x222222, 0xFFFFFF, 0x0A0A0A},  // 9: Three-Screen (amber)
+            {0xFFB000, 0x333333, 0xFFFFFF, 0x0A0A0A},  // 10: Brightness-First (amber)
+            {0x4CAF50, 0x1B5E20, 0xFFFFFF, 0x111111},  // 11: Door Switch (green)
+            {0xE8E0D0, 0x555555, 0xFFFFFF, 0x000000},  // 12: Lunar Phase (moon white)
+            {0xFFB000, 0x3A2000, 0x805000, 0x000000},  // 13: Sundial Shadow (gold)
+            {0xFFD080, 0x3D2400, 0x8D5600, 0x000000},  // 14: Tree Ring (wood)
+            {0xFFB000, 0x222222, 0xFF8C00, 0x050505},  // 15: Topographic (amber)
+            {0xFFB000, 0x555555, 0xFFFFFF, 0x111111},  // 16: Iris Aperture (amber)
+            {0xFFB000, 0x222222, 0xFF8C00, 0x111111},  // 17: Radar Sweep (amber)
+            {0xFFB000, 0x1A1A1A, 0xFF8C00, 0x111111},  // 18: Vinyl DJ (amber)
+            {0xFFB000, 0xFF8C00, 0xFFD000, 0x000000},  // 19: Eclipse Corona (gold)
+          };
+
+          int t = id(active_theme);
+          if (t < 0) t = 0;
+          if (t > 19) t = 19;
+
+          uint32_t primary = theme_colors[t][0];
+          uint32_t secondary = theme_colors[t][1];
+          uint32_t accent = theme_colors[t][2];
+          uint32_t bg_tint = theme_colors[t][3];
+
+          // Store for use in widget updates
+          // (ESPHome lambdas can't easily pass to subsequent actions,
+          //  so we use the globals + widget updates below)
+
+      # Update Power page decorative arc color per theme
+      - lvgl.widget.update:
+          id: pw_deco_arc
+          arc_color: !lambda |-
+            static const uint32_t colors[] = {
+              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
+              0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
+              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
+              0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return lv_color_hex(colors[t]);
+
+      # Update Power button border color
+      - lvgl.widget.update:
+          id: power_btn
+          border_color: !lambda |-
+            static const uint32_t colors[] = {
+              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
+              0x331100, 0x333333, 0x333333, 0xFFB000, 0x333333,
+              0x333333, 0x4CAF50, 0x555555, 0x805000, 0x3D2400,
+              0x333333, 0x555555, 0x333333, 0x333333, 0xFF8C00
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return lv_color_hex(colors[t]);
+
+      # Update brightness arc indicator color per theme
+      - lvgl.widget.update:
+          id: brightness_arc
+          arc_color: !lambda |-
+            static const uint32_t colors[] = {
+              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
+              0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
+              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
+              0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return lv_color_hex(colors[t]);
+
+      # Update decorative sub-arc on brightness page
+      - lvgl.widget.update:
+          id: br_deco_arc
+          arc_color: !lambda |-
+            static const uint32_t colors[] = {
+              0x1A3040, 0x2A1500, 0x0D2A0D, 0x2A1A00, 0x1A1200,
+              0x1A0800, 0x1A1200, 0x1A3040, 0x1A1200, 0x1A1200,
+              0x1A1200, 0x0D2A0D, 0x222222, 0x1A1000, 0x1A0E00,
+              0x1A1200, 0x1A1200, 0x1A1200, 0x1A1200, 0x1A0A00
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return lv_color_hex(colors[t]);
+
+      # Update theme name on power page
+      - lvgl.label.update:
+          id: pw_theme_name
+          text: !lambda |-
+            static const char* names[] = {
+              "Minimal", "SmartKnob", "Power", "Simple", "Ring",
+              "Night", "Text", "Watch", "LED", "Carousel",
+              "Bright", "Switch", "Lunar", "Sundial", "Tree",
+              "Topo", "Iris", "Radar", "Vinyl", "Eclipse"
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return names[t];
+
+      # Update preset button labels per theme
+      - lvgl.label.update:
+          id: preset_label_0
+          text: !lambda |-
+            static const char* labels[] = {
+              "Warm", "Warm", "Warm", "Warm", "Warm",
+              "Dim", "Warm", "Warm", "Warm", "Warm",
+              "Warm", "Warm", "Full", "Noon", "Summer",
+              "Summit", "Wide", "Wide", "Track A", "Maximum"
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return labels[t];
+      - lvgl.label.update:
+          id: preset_label_1
+          text: !lambda |-
+            static const char* labels[] = {
+              "Amber", "Amber", "Amber", "Amber", "Amber",
+              "Glow", "Amber", "Amber", "Amber", "Amber",
+              "Amber", "Amber", "Waxing", "Golden", "Autumn",
+              "Ridge", "Portrait", "Focused", "Track B", "Corona"
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return labels[t];
+      - lvgl.label.update:
+          id: preset_label_2
+          text: !lambda |-
+            static const char* labels[] = {
+              "Neutral", "Neutral", "Neutral", "Neutral", "Neutral",
+              "Low", "Neutral", "Neutral", "Neutral", "Neutral",
+              "Neutral", "Neutral", "Quarter", "Morning", "Spring",
+              "Plateau", "Landscape", "Daylight", "Track C", "Totality"
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return labels[t];
+      - lvgl.label.update:
+          id: preset_label_3
+          text: !lambda |-
+            static const char* labels[] = {
+              "Night", "Night", "Night", "Night", "Night",
+              "Off", "Night", "Night", "Night", "Night",
+              "Night", "Night", "New", "Twilight", "Winter",
+              "Valley", "Pinhole", "Stealth", "Track D", "Partial"
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return labels[t];
+
       - logger.log:
-          format: "Action: preset %d applied"
-          args: ['preset_index']
+          format: "Theme rendered: %d"
+          args: ['id(active_theme)']
 
   # =========================================================================
-  # UI UPDATE SCRIPTS (safe — no HA commands, no wake concerns)
+  # UI UPDATE SCRIPTS
   # =========================================================================
-
-  # --- Update page indicator dots ---
   - id: update_page_indicator
     mode: single
     then:
@@ -1209,7 +1423,6 @@ script:
           width: !lambda 'return id(current_page) == 2 ? 10 : 8;'
           height: !lambda 'return id(current_page) == 2 ? 10 : 8;'
 
-  # --- Update preset button highlights ---
   - id: update_preset_buttons
     mode: single
     then:
@@ -1230,7 +1443,6 @@ script:
           state:
             checked: !lambda 'return id(active_preset) == 3;'
 
-  # --- Update preset highlight (encoder cycling) ---
   - id: update_preset_highlight
     mode: single
     then:
@@ -1251,7 +1463,6 @@ script:
           state:
             focused: !lambda 'return id(highlighted_preset) == 3;'
 
-  # --- Update LED ring based on light state ---
   - id: update_led_ring
     mode: single
     then:
@@ -1259,17 +1470,44 @@ script:
           condition:
             lambda: 'return id(lights_on);'
           then:
+            # LED ring color matches theme primary
             - light.turn_on:
                 id: led_ring
-                red: 100%
-                green: 70%
-                blue: 0%
+                red: !lambda |-
+                  static const float reds[] = {
+                    0.31, 1.0, 0.30, 1.0, 1.0,
+                    1.0, 1.0, 0.31, 1.0, 1.0,
+                    1.0, 0.30, 0.91, 1.0, 1.0,
+                    1.0, 1.0, 1.0, 1.0, 1.0
+                  };
+                  int t = id(active_theme);
+                  if (t < 0) t = 0; if (t > 19) t = 19;
+                  return reds[t];
+                green: !lambda |-
+                  static const float greens[] = {
+                    0.76, 0.42, 0.69, 0.72, 0.69,
+                    0.27, 0.69, 0.76, 0.69, 0.69,
+                    0.69, 0.69, 0.88, 0.69, 0.82,
+                    0.69, 0.69, 0.69, 0.69, 0.55
+                  };
+                  int t = id(active_theme);
+                  if (t < 0) t = 0; if (t > 19) t = 19;
+                  return greens[t];
+                blue: !lambda |-
+                  static const float blues[] = {
+                    0.97, 0.21, 0.31, 0.30, 0.0,
+                    0.0, 0.0, 0.97, 0.0, 0.0,
+                    0.0, 0.31, 0.82, 0.0, 0.50,
+                    0.0, 0.0, 0.0, 0.0, 0.0
+                  };
+                  int t = id(active_theme);
+                  if (t < 0) t = 0; if (t > 19) t = 19;
+                  return blues[t];
                 brightness: 20%
           else:
             - light.turn_off:
                 id: led_ring
 
-  # --- Update connection status label ---
   - id: update_connection_status
     mode: single
     then:
@@ -1286,9 +1524,6 @@ script:
                 text: "Unavailable"
                 text_color: 0x666666
 
-  # --- Adaptive backlight from TSL2591 ---
-  # Maps lux to backlight PWM. Runs locally, no HA round-trip.
-  # HARDWARE TEST PENDING — curve values are estimates
   - id: adaptive_backlight
     mode: single
     then:
@@ -1300,30 +1535,19 @@ script:
                 float lux = id(lux_value).state;
                 float target;
                 if (lux > 50.0f) {
-                  target = 1.0f;        // Bright room: full backlight
+                  target = 1.0f;
                 } else if (lux > 5.0f) {
-                  target = 0.4f + (lux - 5.0f) * (0.6f / 45.0f);  // Dim room: 40-100%
+                  target = 0.4f + (lux - 5.0f) * (0.6f / 45.0f);
                 } else {
-                  target = 0.10f + lux * (0.30f / 5.0f);  // Night: 10-40%
+                  target = 0.10f + lux * (0.30f / 5.0f);
                 }
-                // Apply via light component for smooth transition
                 auto call = id(back_light).turn_on();
                 call.set_brightness(target);
                 call.set_transition_length(1000);
                 call.perform();
 
-  # --- Called when entering a page (post-navigation) ---
-  - id: on_page_enter
-    mode: single
-    then:
-      - logger.log:
-          format: "Page entered: %d"
-          args: ['id(current_page)']
-
 # ---------------------------------------------------------------------------
-# Home Assistant state import — track light group state
-# (These are passive state listeners, not user-initiated actions.
-#  They do NOT need wake guards — they update UI regardless of sleep state.)
+# Home Assistant state import
 # ---------------------------------------------------------------------------
 text_sensor:
   - platform: homeassistant
@@ -1338,10 +1562,24 @@ text_sensor:
               id(lights_on) = false;
             }
         - script.execute: update_led_ring
-        - lvgl.widget.update:
-            id: power_btn
-            state:
-              checked: !lambda 'return id(lights_on);'
+        - lvgl.label.update:
+            id: power_icon_label
+            text: !lambda |-
+              if (id(lights_on)) return "ON";
+              return "OFF";
+            text_color: !lambda |-
+              if (id(lights_on)) {
+                static const uint32_t colors[] = {
+                  0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
+                  0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
+                  0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
+                  0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
+                };
+                int t = id(active_theme);
+                if (t < 0) t = 0; if (t > 19) t = 19;
+                return lv_color_hex(colors[t]);
+              }
+              return lv_color_hex(0x666666);
         - lvgl.label.update:
             id: power_status_label
             text: !lambda |-
@@ -1358,7 +1596,6 @@ text_sensor:
     on_value:
       then:
         - lambda: |-
-            // HA brightness is 0-255, convert to 1-100
             int b = (int)(atof(x.c_str()) * 100.0f / 255.0f);
             if (b < 1) b = 1;
             if (b > 100) b = 100;
@@ -1372,3 +1609,22 @@ text_sensor:
               static char buf[8];
               snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
               return buf;
+
+  # Expose active theme to HA as diagnostic
+  - platform: template
+    name: "Active Theme"
+    id: active_theme_sensor
+    lambda: |-
+      static const char* names[] = {
+        "Minimal Thermostat", "SmartKnob Arc", "Large Center Power",
+        "Single-Page Simple", "Preset Ring", "Night Mode Ultra-Minimal",
+        "Text-First Utility", "Apple Watch Complications", "LED-Ring Status",
+        "Three-Screen Carousel", "Brightness-First", "Door Switch Replacement",
+        "Lunar Phase", "Sundial Shadow", "Tree Ring Growth",
+        "Topographic Contour", "Iris Aperture", "Radar Sweep",
+        "Vinyl DJ Crossfader", "Eclipse Corona"
+      };
+      int t = id(active_theme);
+      if (t < 0) t = 0; if (t > 19) t = 19;
+      return {names[t]};
+    update_interval: 10s
