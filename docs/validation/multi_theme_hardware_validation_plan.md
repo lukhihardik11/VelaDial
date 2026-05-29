@@ -6,6 +6,8 @@
 
 This document provides the step-by-step plan for Hardik to physically validate the multi-theme firmware engine on the actual hardware.
 
+> **See also:** For the complete end-to-end project validation (including Raspberry Pi setup, Home Assistant, LocalTuya, bedside controller, and full system tests), refer to [`end_to_end_project_validation_checklist.md`](end_to_end_project_validation_checklist.md).
+
 ## 1. Flashing Guide
 
 Before testing, the firmware must be flashed to the physical board.
@@ -85,22 +87,22 @@ Before testing, the firmware must be flashed to the physical board.
 | Theme | Expected Visual Change | Status |
 | :--- | :--- | :--- |
 | 01: Minimal Thermostat | Blue palette, minimal arcs | PENDING |
-| 02: Orbital Ring | Purple palette, orbital layout | PENDING |
-| 03: Large Center Power | Green palette, large center button | PENDING |
-| 04: Single-Page Simple | Warm amber palette, simplified layout | PENDING |
-| 05: Preset Ring | Classic amber palette, ring layout | PENDING |
-| 06: Night Mode Ultra-Min | Deep red palette, ultra-dim | PENDING |
+| 02: SmartKnob-Inspired Arc | Purple palette, arc gauge layout | PENDING |
+| 03: Large Center Power Button | Green palette, large center button | PENDING |
+| 04: Single-Page Simple Mode | Warm amber palette, simplified layout | PENDING |
+| 05: Preset Ring UI | Classic amber palette, ring layout | PENDING |
+| 06: Night Mode Ultra-Minimal | Deep red palette, ultra-dim | PENDING |
 | 07: Text-First Utility | Amber palette, text-heavy | PENDING |
-| 08: Apple Watch Complic. | Blue palette, complication layout | PENDING |
-| 09: LED-Ring Status | Amber palette, relies on physical LEDs | PENDING |
-| 10: Brightness-First | Amber palette, brightness dominates | PENDING |
-| 11: Door Switch Replace | Green palette, switch metaphor | PENDING |
-| 12: Lunar Phase | Moon white palette, lunar metaphor | PENDING |
-| 13: Sundial Shadow | Warm gold palette, shadow metaphor | PENDING |
-| 14: Tree Ring Growth | Wood tone palette, concentric rings | PENDING |
-| 15: Topographic Contour | Amber palette, contour lines | PENDING |
-| 16: Iris Aperture | Amber palette, aperture mechanism | PENDING |
-| 17: Radar Sweep | Amber palette, sweep animation | PENDING |
-| 18: Vinyl DJ Crossfader | Amber palette, turntable metaphor | PENDING |
-| 19: Eclipse Corona | Deep gold palette, corona glow | PENDING |
-| 20: Default/Fallback | Standard amber layout | PENDING |
+| 08: Apple Watch Complications | Blue palette, complication layout | PENDING |
+| 09: LED-Ring Status-First | Amber palette, relies on physical LEDs | PENDING |
+| 10: Three-Screen Tab Carousel | Amber palette, tab carousel layout | PENDING |
+| 11: Brightness-First UI | Amber palette, brightness dominates | PENDING |
+| 12: Door Switch Replacement | Green palette, switch metaphor | PENDING |
+| 13: Lunar Phase Visualization | Moon white palette, lunar metaphor | PENDING |
+| 14: Sundial Shadow UI | Warm gold palette, shadow metaphor | PENDING |
+| 15: Tree Ring Growth Pattern | Wood tone palette, concentric rings | PENDING |
+| 16: Topographic Contour Map | Amber palette, contour lines | PENDING |
+| 17: Iris Aperture Mechanism | Amber palette, aperture mechanism | PENDING |
+| 18: Radar Sweep Animation | Amber palette, sweep animation | PENDING |
+| 19: Vinyl DJ Crossfader | Amber palette, turntable metaphor | PENDING |
+| 20: Eclipse Corona | Deep gold palette, corona glow | PENDING |

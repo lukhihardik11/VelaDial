@@ -7,6 +7,8 @@
 
 Use this template to record the results of the physical hardware validation.
 
+> **See also:** For the complete end-to-end results template (including Raspberry Pi, HA, LocalTuya, bedside, and full system tests), refer to [`end_to_end_test_results_template.md`](end_to_end_test_results_template.md).
+
 ## 1. Final Sign-Off
 
 | Overall Result | Signature | Date |
