@@ -466,9 +466,17 @@ Concept 19 (Vinyl DJ Crossfader) maps brightness to the radial position of a vir
 | Compile (ESPHome 2026.5.0) | PASSED (0 errors, 165.61s fresh build) |
 | Physical validation | NOT TESTED |
 Concept 20 (Eclipse Corona) is the FINAL and MOST PREMIUM concept in the 20-concept UI prototype program. It maps brightness to the intensity and radius of a solar corona radiating from behind a dark moon disk. At 100% brightness, the corona is massive and bright (Solar Maximum — warm amber glow fills the display). At 5%, only a faint, thin sliver of corona is visible (Partial Eclipse). The round display IS the eclipsed sun viewed head-on. A dark "moon disk" (80px solid circle) sits at center, providing a canvas for the percentage readout. Five concentric glow rings (`lv_obj` circles with 15%/25%/40%/55%/75% opacity in warm amber tones from `0xFF8C00` to `0xFFD000`) simulate the radial falloff of the corona. Three asymmetric `lv_arc` streamer segments at different angles (30°-90°, 200°-270°, 340°-20°) break perfect symmetry to create the organic look of real coronal streamers. Page 0 (Power) shows "ECLIPSE" (ON, bright amber corona ring) vs "TOTALITY" (OFF, dark ring). Page 1 (Brightness Hero) shows the full corona stack with streamer arcs and percentage readout on the moon disk. Page 2 (Presets) shows four miniature eclipse zones arranged in a cross pattern: Solar Maximum (Warm White 80%), Golden Corona (Soft Amber 60%), Full Totality (Neutral White 90%), Partial Eclipse (Low Nightlight 15%). LED ring acts as the outermost corona halo, projecting warm amber light onto the physical wall — extending the eclipse beyond the screen boundary. The aesthetic is "captured cosmic wonder" — cinematic, premium, calm. NOT sci-fi, NOT space wallpaper, NOT solar system toy. Differentiated from Concept 13 (Lunar Phase) by showing radial GLOW around a dark disk rather than illuminated moon surface. Differentiated from Concept 17 (Iris Aperture) by using organic soft glow rather than mechanical metallic blades. This is the concept most likely to make VelaDial iconic — the device people photograph and share. 99-thread ultra-wide research (546KB). The capstone of the entire 20-concept program.
+### Multi-Theme Firmware Engine
+| Item | Status |
+|------|--------|
+| Compile (ESPHome 2026.5.0) | PASSED (0 errors, PR #56 merged) |
+| Physical validation | NOT TESTED |
+
+The multi-theme firmware engine (PR #56, merged) integrates all 20 concept themes into a single compile-passing firmware candidate (`esphome/door_side_rotary.yaml`). A hardware validation package exists at `docs/validation/multi_theme_hardware_validation_plan.md` with a fillable test results template at `docs/validation/multi_theme_test_results_template.md`. All physical test results remain PENDING until Hardik performs testing on real hardware.
+
 ---
 ## Document control
-**Version:** 0.27 — Added Concept 20 Eclipse Corona note (FINAL CONCEPT); compile PASSED, eclipse corona metaphor, cinematic/premium/calm, 0 errors. ALL 20 CONCEPTS COMPLETE.
+**Version:** 0.28 — Added multi-theme firmware engine entry; hardware validation package created; all physical results remain NOT TESTED / PENDING.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).
