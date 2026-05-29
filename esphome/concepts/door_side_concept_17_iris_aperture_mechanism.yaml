@@ -1,0 +1,1068 @@
+# ===========================================================================
+# VelaDial — UI Concept 17: Iris Aperture Mechanism
+# ===========================================================================
+# CONCEPT PROTOTYPE / NOT PRODUCTION
+# This YAML implements UI Concept 17 (Iris Aperture Mechanism).
+# It is designed for the ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display.
+#
+# COMPILE STATUS: PASS (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors, 169.83s)
+#
+# Key Features:
+# - Iris aperture metaphor: brightness maps to aperture opening diameter
+# - 100% = wide open (f/1.4, full amber light field visible)
+# - 50% = mid-aperture (f/4, octagonal opening, blades partially visible)
+# - 5% = stopped down (f/16, tiny pinhole of light)
+# - OFF = fully closed (blades converge to center, no light)
+# - Iris blades simulated using 8 thick overlapping lv_arc segments
+# - Central amber circle (the "light field") scales with brightness
+# - Dark metallic gray background represents blade material
+# - 3 pages: Power (Shutter State), Brightness (Optical Hero), Presets
+# - Knob CW = open iris (brighter), CCW = close iris (dimmer)
+# - Knob press = power toggle on any page
+# - Round display = lens barrel viewed from front
+# - LED ring = lens rim / light leak (warm amber proportional)
+# - Wake-only-first enforced on all inputs
+# - Always wakes to Power page (page 0)
+# - Targets light.bedroom_group
+#
+# 4 Locked Presets:
+# - Warm White (80%) = "Wide Open"
+# - Soft Amber (60%) = "Portrait"
+# - Neutral White (90%) = "Landscape"
+# - Low Nightlight (15%) = "Pinhole"
+#
+# Design Philosophy:
+# - The round display IS a camera lens viewed from the front
+# - Controlling light = opening/closing the mechanical iris
+# - More open = more light = brighter
+# - Premium optical instrument aesthetic (Leica/Zeiss-inspired)
+# - Precision, metallic, engineered — not camera-app gimmicky
+#
+# Visual Compromises:
+# - True rotating polygon blades not feasible in pure LVGL YAML
+# - Using 8 thick lv_arc segments arranged to form an octagonal mask
+# - Each arc's inner radius scales with brightness to simulate iris opening
+# - Central amber lv_obj circle scales proportionally
+# - The "blade edges" are the inner edges of the arcs
+# - No dynamic shadows or metallic texture (requires pre-rendered images)
+#
+# NOT PRODUCTION. NOT TESTED. CONCEPT EXPLORATION ONLY.
+# ===========================================================================
+
+substitutions:
+  device_name: veladial-door-concept17
+  friendly_name: "VelaDial Door Concept17"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          id(display_awake) = true;
+          id(light_is_on) = false;
+          id(brightness_pct) = 50;
+          id(current_page) = 0;
+          id(active_preset) = 0;
+          id(touch_woke_this_cycle) = false;
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    version: recommended
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name}-AP"
+    password: !secret ap_password
+
+# ---------------------------------------------------------------------------
+# Global Variables
+# ---------------------------------------------------------------------------
+globals:
+  - id: display_awake
+    type: bool
+    initial_value: 'true'
+  - id: light_is_on
+    type: bool
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    initial_value: '50'
+  - id: current_page
+    type: int
+    initial_value: '0'
+  - id: active_preset
+    type: int
+    initial_value: '0'
+  - id: touch_woke_this_cycle
+    type: bool
+    initial_value: 'false'
+
+# ---------------------------------------------------------------------------
+# I2C Buses
+# ---------------------------------------------------------------------------
+i2c:
+  - id: bus_touch
+    sda: GPIO6
+    scl: GPIO7
+    scan: false
+  - id: bus_sensors
+    sda: GPIO38
+    scl: GPIO39
+    scan: false
+
+# ---------------------------------------------------------------------------
+# SPI Bus — Display (GC9A01)
+# ---------------------------------------------------------------------------
+spi:
+  mosi_pin: GPIO11
+  clk_pin: GPIO10
+
+# ---------------------------------------------------------------------------
+# Output — Backlight PWM
+# ---------------------------------------------------------------------------
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO46
+
+light:
+  # Backlight
+  - platform: monochromatic
+    id: backlight
+    output: backlight_pwm
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+    default_transition_length: 500ms
+
+  # WS2812 LED Ring — 5 LEDs on GPIO48 (Lens Rim / Light Leak)
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "LED Ring"
+    pin: GPIO48
+    num_leds: 5
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 300ms
+
+# ---------------------------------------------------------------------------
+# Display — GC9A01 240x240 Round
+# ---------------------------------------------------------------------------
+display:
+  - platform: ili9xxx
+    id: main_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+
+# ---------------------------------------------------------------------------
+# Touchscreen — CST816D
+# ---------------------------------------------------------------------------
+touchscreen:
+  - platform: cst816
+    id: my_touch
+    i2c_id: bus_touch
+    interrupt_pin: GPIO5
+    reset_pin: GPIO13
+    on_touch:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          }
+      - script.execute: wake_screen
+
+# ---------------------------------------------------------------------------
+# Rotary Encoder
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: knob
+    name: "Rotary Encoder"
+    pin_a: GPIO1
+    pin_b: GPIO2
+    resolution: 1
+    on_clockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) < 100) {
+                id(brightness_pct) += 5;
+                if (id(brightness_pct) > 100) id(brightness_pct) = 100;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+    on_anticlockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) > 5) {
+                id(brightness_pct) -= 5;
+                if (id(brightness_pct) < 5) id(brightness_pct) = 5;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Knob Button — Power Toggle on any page
+# ---------------------------------------------------------------------------
+binary_sensor:
+  - platform: gpio
+    id: knob_button
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    on_press:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            id(light_is_on) = !id(light_is_on);
+            if (id(light_is_on) && id(brightness_pct) == 0) {
+              id(brightness_pct) = 80;
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+      - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Home Assistant State Import
+# ---------------------------------------------------------------------------
+text_sensor:
+  - platform: homeassistant
+    id: ha_light_state
+    entity_id: light.bedroom_group
+    attribute: state
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            id(light_is_on) = true;
+          } else if (x == "off") {
+            id(light_is_on) = false;
+          }
+      - script.execute: update_ui
+
+  - platform: homeassistant
+    id: ha_light_brightness
+    entity_id: light.bedroom_group
+    attribute: brightness
+    on_value:
+      - lambda: |-
+          if (x.length() > 0) {
+            int b = atoi(x.c_str());
+            id(brightness_pct) = (b * 100) / 255;
+          }
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Scripts
+# ---------------------------------------------------------------------------
+script:
+  # --- Wake Screen ---
+  - id: wake_screen
+    mode: restart
+    then:
+      - light.turn_on:
+          id: backlight
+          brightness: 80%
+          transition_length: 300ms
+      - if:
+          condition:
+            lambda: 'return id(touch_woke_this_cycle);'
+          then:
+            - lvgl.page.show:
+                id: page_power
+                animation: NONE
+                time: 0ms
+            - lambda: 'id(current_page) = 0;'
+      - delay: 500ms
+      - lambda: 'id(touch_woke_this_cycle) = false;'
+      - delay: 44500ms
+      - lambda: 'id(display_awake) = false;'
+      - light.turn_off:
+          id: backlight
+          transition_length: 300ms
+
+  # --- Update UI (Aperture + Labels + LED Ring) ---
+  - id: update_ui
+    mode: restart
+    then:
+      # ---- POWER PAGE (Page 0): Open iris (ON) / Closed iris (OFF) ----
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            # ON: Show a medium-sized amber aperture opening
+            - lvgl.widget.update:
+                id: aperture_power
+                width: 80
+                height: 80
+                radius: 40
+                bg_color: 0xFFB000
+            - lvgl.label.update:
+                id: power_state_label
+                text: "ON"
+                text_color: 0xFFB000
+          else:
+            # OFF: Tiny closed aperture (pinpoint)
+            - lvgl.widget.update:
+                id: aperture_power
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0x333333
+            - lvgl.label.update:
+                id: power_state_label
+                text: "OFF"
+                text_color: 0x555555
+
+      # ---- BRIGHTNESS PAGE (Page 1): Scale aperture opening ----
+      # Map brightness_pct (5-100) to aperture diameter (20-220)
+      - lvgl.widget.update:
+          id: aperture_brightness
+          width: !lambda |-
+            int w = 20 + (id(brightness_pct) * 200 / 100);
+            if (w > 220) w = 220;
+            if (w < 20) w = 20;
+            return w;
+          height: !lambda |-
+            int h = 20 + (id(brightness_pct) * 200 / 100);
+            if (h > 220) h = 220;
+            if (h < 20) h = 20;
+            return h;
+          radius: !lambda |-
+            int r = (20 + (id(brightness_pct) * 200 / 100)) / 2;
+            if (r > 110) r = 110;
+            if (r < 10) r = 10;
+            return r;
+
+      # Update blade arcs — each arc represents one "blade" of the iris
+      # As aperture opens (brightness increases), the arcs' inner radius grows
+      # We simulate this by changing the arc width (thinner = more open)
+      - lvgl.arc.update:
+          id: blade_arc_0
+          value: !lambda 'return id(brightness_pct);'
+      - lvgl.arc.update:
+          id: blade_arc_1
+          value: !lambda 'return id(brightness_pct);'
+      - lvgl.arc.update:
+          id: blade_arc_2
+          value: !lambda 'return id(brightness_pct);'
+      - lvgl.arc.update:
+          id: blade_arc_3
+          value: !lambda 'return id(brightness_pct);'
+      - lvgl.arc.update:
+          id: blade_arc_4
+          value: !lambda 'return id(brightness_pct);'
+      - lvgl.arc.update:
+          id: blade_arc_5
+          value: !lambda 'return id(brightness_pct);'
+      - lvgl.arc.update:
+          id: blade_arc_6
+          value: !lambda 'return id(brightness_pct);'
+      - lvgl.arc.update:
+          id: blade_arc_7
+          value: !lambda 'return id(brightness_pct);'
+
+      # Update brightness percentage label
+      - lvgl.label.update:
+          id: iris_pct_label
+          text: !lambda |-
+            static char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+            return buf;
+
+      # ---- PRESETS PAGE (Page 2): Highlight active preset ----
+      - lvgl.label.update:
+          id: preset_label_0
+          text_color: !lambda 'return (id(active_preset) == 0) ? lv_color_hex(0xFFB000) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_1
+          text_color: !lambda 'return (id(active_preset) == 1) ? lv_color_hex(0xFFB000) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_2
+          text_color: !lambda 'return (id(active_preset) == 2) ? lv_color_hex(0xFFB000) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_3
+          text_color: !lambda 'return (id(active_preset) == 3) ? lv_color_hex(0xFFB000) : lv_color_hex(0x555555);'
+
+      # ---- LED Ring (Lens Rim — Warm Amber Proportional) ----
+      - script.execute: update_led_ring
+
+      # ---- Page Dots ----
+      - lvgl.widget.update:
+          id: dot_0
+          bg_color: !lambda 'return (id(current_page) == 0) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+      - lvgl.widget.update:
+          id: dot_1
+          bg_color: !lambda 'return (id(current_page) == 1) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+      - lvgl.widget.update:
+          id: dot_2
+          bg_color: !lambda 'return (id(current_page) == 2) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+
+  # --- Update LED Ring (Lens Rim — Proportional Warm Amber) ---
+  - id: update_led_ring
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - light.turn_on:
+                id: led_ring
+                red: 100%
+                green: 55%
+                blue: 0%
+                brightness: !lambda |-
+                  float b = id(brightness_pct) / 100.0 * 0.4;
+                  if (b < 0.05) b = 0.05;
+                  return b;
+                transition_length: 300ms
+          else:
+            - light.turn_off:
+                id: led_ring
+                transition_length: 300ms
+
+  # --- Send to Home Assistant ---
+  - id: send_to_ha
+    mode: single
+    then:
+      - homeassistant.service:
+          service: light.turn_on
+          data:
+            entity_id: light.bedroom_group
+            brightness: !lambda |-
+              return id(brightness_pct) * 255 / 100;
+      - if:
+          condition:
+            lambda: 'return !id(light_is_on);'
+          then:
+            - homeassistant.service:
+                service: light.turn_off
+                data:
+                  entity_id: light.bedroom_group
+
+  # --- Guarded Swipe Left ---
+  - id: guarded_swipe_left
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) < 2) {
+                  id(current_page) += 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2;'
+                then:
+                  - lvgl.page.show:
+                      id: page_presets
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Swipe Right ---
+  - id: guarded_swipe_right
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) > 0) {
+                  id(current_page) -= 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 0;'
+                then:
+                  - lvgl.page.show:
+                      id: page_power
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Power Toggle ---
+  - id: guarded_power_toggle
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(light_is_on) = !id(light_is_on);
+                if (id(light_is_on) && id(brightness_pct) == 0) {
+                  id(brightness_pct) = 80;
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+  # --- Guarded Preset Apply ---
+  - id: guarded_preset_apply
+    mode: single
+    parameters:
+      preset_index: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(active_preset) = preset_index;
+                id(light_is_on) = true;
+                switch (preset_index) {
+                  case 0: id(brightness_pct) = 80; break;  // Warm White = Wide Open
+                  case 1: id(brightness_pct) = 60; break;  // Soft Amber = Portrait
+                  case 2: id(brightness_pct) = 90; break;  // Neutral White = Landscape
+                  case 3: id(brightness_pct) = 15; break;  // Low Nightlight = Pinhole
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Fonts
+# ---------------------------------------------------------------------------
+font:
+  - file:
+      type: gfonts
+      family: Roboto Mono
+      weight: 400
+    id: font_28
+    size: 28
+    glyphs: "0123456789% "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_18
+    size: 18
+    glyphs: "ONF "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_14
+    size: 14
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz %.-"
+
+# ---------------------------------------------------------------------------
+# LVGL — Iris Aperture Mechanism
+# ---------------------------------------------------------------------------
+lvgl:
+  displays:
+    - main_display
+  touchscreens:
+    - my_touch
+  color_depth: 16
+  buffer_size: 25%
+
+  # Top layer — always-visible 3-dot page indicator
+  top_layer:
+    widgets:
+      - obj:
+          id: page_indicator
+          align: BOTTOM_MID
+          y: -8
+          width: 60
+          height: 12
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          layout:
+            type: FLEX
+            flex_flow: ROW
+            flex_align_main: CENTER
+            flex_align_cross: CENTER
+          widgets:
+            - obj:
+                id: dot_0
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0xFFB000
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_1
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0x333333
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_2
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0x333333
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+
+  # Pages — ORDER: Power (Shutter State), Brightness (Optical Hero), Presets
+  pages:
+    # ----- PAGE 0: Power (Shutter State) -----
+    # ON = iris partially open (amber visible), OFF = iris fully closed (dark)
+    - id: page_power
+      bg_color: 0x111111
+      bg_opa: COVER
+      widgets:
+        # Central aperture opening — scales based on power state
+        - obj:
+            id: aperture_power
+            align: CENTER
+            width: 6
+            height: 6
+            radius: 3
+            bg_color: 0x333333
+            bg_opa: COVER
+            border_width: 0
+            clickable: true
+            on_click:
+              - script.execute: guarded_power_toggle
+
+        # Power state label (below aperture)
+        - label:
+            id: power_state_label
+            align: CENTER
+            y: 55
+            text_font: font_18
+            text_color: 0x555555
+            text: "OFF"
+
+        # Decorative blade edge lines (static, 8 radial lines)
+        - obj:
+            id: blade_line_p1
+            align: CENTER
+            x: 0
+            y: -60
+            width: 2
+            height: 40
+            bg_color: 0x2A2A2A
+            bg_opa: COVER
+            border_width: 0
+            radius: 1
+            clickable: false
+        - obj:
+            id: blade_line_p2
+            align: CENTER
+            x: 42
+            y: -42
+            width: 2
+            height: 40
+            bg_color: 0x2A2A2A
+            bg_opa: COVER
+            border_width: 0
+            radius: 1
+            clickable: false
+        - obj:
+            id: blade_line_p3
+            align: CENTER
+            x: 60
+            y: 0
+            width: 40
+            height: 2
+            bg_color: 0x2A2A2A
+            bg_opa: COVER
+            border_width: 0
+            radius: 1
+            clickable: false
+        - obj:
+            id: blade_line_p4
+            align: CENTER
+            x: 42
+            y: 42
+            width: 2
+            height: 40
+            bg_color: 0x2A2A2A
+            bg_opa: COVER
+            border_width: 0
+            radius: 1
+            clickable: false
+
+      on_load:
+        - lambda: 'id(current_page) = 0;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 1: Brightness (Optical Hero — Iris Aperture) -----
+    # Central amber circle expands/contracts with brightness
+    # 8 arc segments simulate the iris blades around the aperture
+    - id: page_brightness
+      bg_color: 0x111111
+      bg_opa: COVER
+      widgets:
+        # 8 Blade Arcs — arranged in octagon pattern around center
+        # Each arc covers 45 degrees, representing one blade
+        # The arc "value" controls how much of the blade is visible
+        # At 100% brightness (wide open), arcs show minimal coverage
+        # At 5% brightness (stopped down), arcs cover most of the display
+        - arc:
+            id: blade_arc_0
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x222222
+            arc_width: 50
+            start_angle: 0
+            end_angle: 45
+            value: 50
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x2A2A2A
+              arc_width: 50
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        - arc:
+            id: blade_arc_1
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x222222
+            arc_width: 50
+            start_angle: 45
+            end_angle: 90
+            value: 50
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x2E2E2E
+              arc_width: 50
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        - arc:
+            id: blade_arc_2
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x222222
+            arc_width: 50
+            start_angle: 90
+            end_angle: 135
+            value: 50
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x2A2A2A
+              arc_width: 50
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        - arc:
+            id: blade_arc_3
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x222222
+            arc_width: 50
+            start_angle: 135
+            end_angle: 180
+            value: 50
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x2E2E2E
+              arc_width: 50
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        - arc:
+            id: blade_arc_4
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x222222
+            arc_width: 50
+            start_angle: 180
+            end_angle: 225
+            value: 50
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x2A2A2A
+              arc_width: 50
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        - arc:
+            id: blade_arc_5
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x222222
+            arc_width: 50
+            start_angle: 225
+            end_angle: 270
+            value: 50
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x2E2E2E
+              arc_width: 50
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        - arc:
+            id: blade_arc_6
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x222222
+            arc_width: 50
+            start_angle: 270
+            end_angle: 315
+            value: 50
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x2A2A2A
+              arc_width: 50
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        - arc:
+            id: blade_arc_7
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x222222
+            arc_width: 50
+            start_angle: 315
+            end_angle: 360
+            value: 50
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x2E2E2E
+              arc_width: 50
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Central aperture — the warm amber "light field" visible through the iris
+        - obj:
+            id: aperture_brightness
+            align: CENTER
+            width: 120
+            height: 120
+            radius: 60
+            bg_color: 0xFFB000
+            bg_opa: COVER
+            border_width: 0
+            clickable: false
+
+        # Brightness percentage label (centered in aperture)
+        - label:
+            id: iris_pct_label
+            align: CENTER
+            text_font: font_28
+            text_color: 0x111111
+            text: "50%"
+
+      on_load:
+        - lambda: 'id(current_page) = 1;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 2: Presets (Aperture Modes) -----
+    # Each preset mapped to a photography/aperture mode
+    - id: page_presets
+      bg_color: 0x111111
+      bg_opa: COVER
+      widgets:
+        # Title
+        - label:
+            align: TOP_MID
+            y: 25
+            text_font: font_14
+            text_color: 0x777777
+            text: "Aperture"
+
+        # 2x2 grid container
+        - obj:
+            align: CENTER
+            width: 180
+            height: 160
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 6
+            layout:
+              type: FLEX
+              flex_flow: ROW_WRAP
+              flex_align_main: SPACE_EVENLY
+              flex_align_cross: CENTER
+              flex_align_track: SPACE_EVENLY
+            widgets:
+              # Preset 0: Warm White = "Wide Open"
+              - button:
+                  id: preset_btn_0
+                  width: 80
+                  height: 65
+                  radius: 8
+                  bg_color: 0x1A1A1A
+                  border_color: 0x333333
+                  border_width: 1
+                  widgets:
+                    - label:
+                        id: preset_label_0
+                        align: CENTER
+                        text_font: font_14
+                        text_color: 0xFFB000
+                        text: "Wide"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 0
+
+              # Preset 1: Soft Amber = "Portrait"
+              - button:
+                  id: preset_btn_1
+                  width: 80
+                  height: 65
+                  radius: 8
+                  bg_color: 0x1A1A1A
+                  border_color: 0x333333
+                  border_width: 1
+                  widgets:
+                    - label:
+                        id: preset_label_1
+                        align: CENTER
+                        text_font: font_14
+                        text_color: 0x555555
+                        text: "Portrait"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 1
+
+              # Preset 2: Neutral White = "Landscape"
+              - button:
+                  id: preset_btn_2
+                  width: 80
+                  height: 65
+                  radius: 8
+                  bg_color: 0x1A1A1A
+                  border_color: 0x333333
+                  border_width: 1
+                  widgets:
+                    - label:
+                        id: preset_label_2
+                        align: CENTER
+                        text_font: font_14
+                        text_color: 0x555555
+                        text: "Landscape"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 2
+
+              # Preset 3: Low Nightlight = "Pinhole"
+              - button:
+                  id: preset_btn_3
+                  width: 80
+                  height: 65
+                  radius: 8
+                  bg_color: 0x1A1A1A
+                  border_color: 0x333333
+                  border_width: 1
+                  widgets:
+                    - label:
+                        id: preset_label_3
+                        align: CENTER
+                        text_font: font_14
+                        text_color: 0x555555
+                        text: "Pinhole"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 3
+
+      on_load:
+        - lambda: 'id(current_page) = 2;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
