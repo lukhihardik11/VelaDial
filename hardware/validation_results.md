@@ -433,11 +433,20 @@ Concept 14 (Sundial Shadow UI) maps brightness to the length of a shadow cast by
 
 Concept 15 (Tree Ring Growth Pattern) maps brightness to the number of visible concentric rings on the display, like the cross-section of a tree trunk. At 100% brightness, the display is filled with 8 concentric rings extending to the bezel — a mature tree. At 5%, only the innermost heartwood is visible. The rings are implemented as concentric `lv_obj` circles with borders in a gradient of wood tones (dark heartwood to light amber sapwood). Each ring’s border opacity is toggled based on brightness threshold. Page 1 (Power) shows warm heartwood (ON) vs dark dormant (OFF). Page 2 (Brightness Hero) shows the ring growth with a percentage overlay. Page 3 (Presets) maps each preset to a season: Warm White = Summer, Soft Amber = Autumn, Neutral White = Spring, Low Nightlight = Winter. LED ring acts as the outermost growth ring with proportional warm amber. Premium and organic — connects electric light to natural growth.
 
+### Concept 16: Topographic Contour Map
+
+| Item | Status |
+|------|--------|
+| Compile (ESPHome 2026.5.0) | PASSED (0 errors, 159s fresh build) |
+| Physical validation | NOT TESTED |
+
+Concept 16 (Topographic Contour Map) maps brightness to terrain elevation. At 100% brightness, the display shows a mountain peak — 12 dense, closely spaced contour lines filling the circle with a bright summit marker at center. At 5%, only the innermost contour is visible (valley floor). The contour lines are implemented as thin-bordered (2px) concentric `lv_obj` circles in a gradient from dark amber (inner) to bright amber (outer), creating a cartographic aesthetic. A small summit marker dot at center differentiates this from Concept 15 (Tree Rings). Page 1 (Power) shows active terrain (ON) vs flat plain (OFF). Page 2 (Brightness Hero) shows contour density with elevation percentage. Page 3 (Presets) maps each preset to a terrain zone: Warm White = Summit, Soft Amber = Ridge, Neutral White = Plateau, Low Nightlight = Valley. LED ring acts as the outer horizon line with proportional warm amber. Premium and cartographic — connects electric light to terrain exploration. Uses Roboto Mono for technical precision feel.
+
 ---
 
 ## Document control
 
-**Version:** 0.22 — Added Concept 15 Tree Ring Growth Pattern note; compile PASSED, concentric ring metaphor, organic/premium, 0 errors.
+**Version:** 0.23 — Added Concept 16 Topographic Contour Map note; compile PASSED, contour density metaphor, cartographic/premium, 0 errors.
 **Owner approval required:** Yes, before lifting the Step 15B gate.  
 **Next phase after sign-off:** Door-side sensor validation
 (`docs/13_Firmware_Prep_Validation_Plan.md` §3.C).

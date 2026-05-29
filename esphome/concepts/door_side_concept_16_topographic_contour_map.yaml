@@ -1,0 +1,994 @@
+# ===========================================================================
+# VelaDial — UI Concept 16: Topographic Contour Map
+# ===========================================================================
+# CONCEPT PROTOTYPE / NOT PRODUCTION
+# This YAML implements UI Concept 16 (Topographic Contour Map).
+# It is designed for the ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display.
+#
+# COMPILE STATUS: PASS (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors, 159s fresh build)
+#
+# Key Features:
+# - Topographic contour metaphor: brightness maps to elevation/contour density
+# - 100% = mountain peak (dense contour lines, warm summit glow)
+# - 5% = valley floor (sparse contours, dim)
+# - Contour lines implemented as thin-bordered concentric lv_obj circles
+# - 12 contour lines for fine granularity
+# - Central "summit marker" (small bright dot) differentiates from tree rings
+# - Technical cartographic aesthetic: thin amber lines on dark charcoal
+# - 3 pages: Power (Terrain State), Brightness (Elevation Hero), Presets
+# - Knob CW = raise terrain (brighter), CCW = lower terrain (dimmer)
+# - Knob press = power toggle on any page
+# - Round display = aerial view of terrain
+# - LED ring = outer horizon line (warm amber proportional)
+# - Wake-only-first enforced on all inputs
+# - Always wakes to Power page (page 0)
+# - Targets light.bedroom_group
+#
+# 4 Locked Presets:
+# - Warm White (80%) = "Summit"
+# - Soft Amber (60%) = "Ridge"
+# - Neutral White (90%) = "Plateau"
+# - Low Nightlight (15%) = "Valley"
+#
+# Design Philosophy:
+# - The round display IS a topographic map viewed from above
+# - Controlling light = raising/lowering terrain
+# - More contours = higher elevation = brighter light
+# - Premium cartographic aesthetic (Garmin/Suunto-inspired)
+# - Technical precision, not decorative wallpaper
+#
+# Visual Compromises:
+# - True irregular contour lines not feasible in pure LVGL YAML
+# - Using perfect concentric circles with thin borders as abstraction
+# - Differentiated from Concept 15 (Tree Rings) via:
+#   - Thinner lines (2px vs 4px)
+#   - More lines (12 vs 8)
+#   - Technical amber palette vs organic brown palette
+#   - Summit marker at center vs solid heartwood
+#   - Terrain zone preset names vs seasonal names
+#
+# NOT PRODUCTION. NOT TESTED. CONCEPT EXPLORATION ONLY.
+# ===========================================================================
+
+substitutions:
+  device_name: veladial-door-concept16
+  friendly_name: "VelaDial Door Concept16"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          id(display_awake) = true;
+          id(light_is_on) = false;
+          id(brightness_pct) = 50;
+          id(current_page) = 0;
+          id(active_preset) = 0;
+          id(touch_woke_this_cycle) = false;
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    version: recommended
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name}-AP"
+    password: !secret ap_password
+
+# ---------------------------------------------------------------------------
+# Global Variables
+# ---------------------------------------------------------------------------
+globals:
+  - id: display_awake
+    type: bool
+    initial_value: 'true'
+  - id: light_is_on
+    type: bool
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    initial_value: '50'
+  - id: current_page
+    type: int
+    initial_value: '0'
+  - id: active_preset
+    type: int
+    initial_value: '0'
+  - id: touch_woke_this_cycle
+    type: bool
+    initial_value: 'false'
+
+# ---------------------------------------------------------------------------
+# I2C Buses
+# ---------------------------------------------------------------------------
+i2c:
+  - id: bus_touch
+    sda: GPIO6
+    scl: GPIO7
+    scan: false
+  - id: bus_sensors
+    sda: GPIO38
+    scl: GPIO39
+    scan: false
+
+# ---------------------------------------------------------------------------
+# SPI Bus — Display (GC9A01)
+# ---------------------------------------------------------------------------
+spi:
+  mosi_pin: GPIO11
+  clk_pin: GPIO10
+
+# ---------------------------------------------------------------------------
+# Output — Backlight PWM
+# ---------------------------------------------------------------------------
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO46
+
+light:
+  # Backlight
+  - platform: monochromatic
+    id: backlight
+    output: backlight_pwm
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+    default_transition_length: 500ms
+
+  # WS2812 LED Ring — 5 LEDs on GPIO48 (Outer Horizon Line)
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "LED Ring"
+    pin: GPIO48
+    num_leds: 5
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 300ms
+
+# ---------------------------------------------------------------------------
+# Display — GC9A01 240x240 Round
+# ---------------------------------------------------------------------------
+display:
+  - platform: ili9xxx
+    id: main_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+
+# ---------------------------------------------------------------------------
+# Touchscreen — CST816D
+# ---------------------------------------------------------------------------
+touchscreen:
+  - platform: cst816
+    id: my_touch
+    i2c_id: bus_touch
+    interrupt_pin: GPIO5
+    reset_pin: GPIO13
+    on_touch:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          }
+      - script.execute: wake_screen
+
+# ---------------------------------------------------------------------------
+# Rotary Encoder
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: knob
+    name: "Rotary Encoder"
+    pin_a: GPIO1
+    pin_b: GPIO2
+    resolution: 1
+    on_clockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) < 100) {
+                id(brightness_pct) += 5;
+                if (id(brightness_pct) > 100) id(brightness_pct) = 100;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+    on_anticlockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) > 5) {
+                id(brightness_pct) -= 5;
+                if (id(brightness_pct) < 5) id(brightness_pct) = 5;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Knob Button — Power Toggle on any page
+# ---------------------------------------------------------------------------
+binary_sensor:
+  - platform: gpio
+    id: knob_button
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    on_press:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            id(light_is_on) = !id(light_is_on);
+            if (id(light_is_on) && id(brightness_pct) == 0) {
+              id(brightness_pct) = 80;
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+      - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Home Assistant State Import
+# ---------------------------------------------------------------------------
+text_sensor:
+  - platform: homeassistant
+    id: ha_light_state
+    entity_id: light.bedroom_group
+    attribute: state
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            id(light_is_on) = true;
+          } else if (x == "off") {
+            id(light_is_on) = false;
+          }
+      - script.execute: update_ui
+
+  - platform: homeassistant
+    id: ha_light_brightness
+    entity_id: light.bedroom_group
+    attribute: brightness
+    on_value:
+      - lambda: |-
+          if (x.length() > 0) {
+            int b = atoi(x.c_str());
+            id(brightness_pct) = (b * 100) / 255;
+          }
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Scripts
+# ---------------------------------------------------------------------------
+script:
+  # --- Wake Screen ---
+  - id: wake_screen
+    mode: restart
+    then:
+      - light.turn_on:
+          id: backlight
+          brightness: 80%
+          transition_length: 300ms
+      - if:
+          condition:
+            lambda: 'return id(touch_woke_this_cycle);'
+          then:
+            - lvgl.page.show:
+                id: page_power
+                animation: NONE
+                time: 0ms
+            - lambda: 'id(current_page) = 0;'
+      - delay: 500ms
+      - lambda: 'id(touch_woke_this_cycle) = false;'
+      - delay: 44500ms
+      - lambda: 'id(display_awake) = false;'
+      - light.turn_off:
+          id: backlight
+          transition_length: 300ms
+
+  # --- Update UI (Contour Lines + Labels + LED Ring) ---
+  - id: update_ui
+    mode: restart
+    then:
+      # ---- POWER PAGE (Page 0): Peak (ON) / Flat Plain (OFF) ----
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - lvgl.widget.update:
+                id: summit_power
+                bg_color: 0xFFB000
+            - lvgl.label.update:
+                id: power_state_label
+                text: "ON"
+                text_color: 0xFFB000
+          else:
+            - lvgl.widget.update:
+                id: summit_power
+                bg_color: 0x333333
+            - lvgl.label.update:
+                id: power_state_label
+                text: "OFF"
+                text_color: 0x555555
+
+      # ---- BRIGHTNESS PAGE (Page 1): Show/hide contour lines based on brightness ----
+      # 12 contour lines, each representing ~8.3% brightness
+      - lvgl.widget.update:
+          id: contour_01
+          border_opa: !lambda 'return (id(brightness_pct) >= 8) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_02
+          border_opa: !lambda 'return (id(brightness_pct) >= 16) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_03
+          border_opa: !lambda 'return (id(brightness_pct) >= 25) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_04
+          border_opa: !lambda 'return (id(brightness_pct) >= 33) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_05
+          border_opa: !lambda 'return (id(brightness_pct) >= 41) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_06
+          border_opa: !lambda 'return (id(brightness_pct) >= 50) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_07
+          border_opa: !lambda 'return (id(brightness_pct) >= 58) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_08
+          border_opa: !lambda 'return (id(brightness_pct) >= 66) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_09
+          border_opa: !lambda 'return (id(brightness_pct) >= 75) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_10
+          border_opa: !lambda 'return (id(brightness_pct) >= 83) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_11
+          border_opa: !lambda 'return (id(brightness_pct) >= 91) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+      - lvgl.widget.update:
+          id: contour_12
+          border_opa: !lambda 'return (id(brightness_pct) >= 97) ? LV_OPA_COVER : LV_OPA_TRANSP;'
+
+      # Update brightness percentage label
+      - lvgl.label.update:
+          id: elevation_pct_label
+          text: !lambda |-
+            static char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+            return buf;
+
+      # ---- PRESETS PAGE (Page 2): Highlight active preset ----
+      - lvgl.label.update:
+          id: preset_label_0
+          text_color: !lambda 'return (id(active_preset) == 0) ? lv_color_hex(0xFFB000) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_1
+          text_color: !lambda 'return (id(active_preset) == 1) ? lv_color_hex(0xFFB000) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_2
+          text_color: !lambda 'return (id(active_preset) == 2) ? lv_color_hex(0xFFB000) : lv_color_hex(0x555555);'
+      - lvgl.label.update:
+          id: preset_label_3
+          text_color: !lambda 'return (id(active_preset) == 3) ? lv_color_hex(0xFFB000) : lv_color_hex(0x555555);'
+
+      # ---- LED Ring (Outer Horizon Line — Warm Amber Proportional) ----
+      - script.execute: update_led_ring
+
+      # ---- Page Dots ----
+      - lvgl.widget.update:
+          id: dot_0
+          bg_color: !lambda 'return (id(current_page) == 0) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+      - lvgl.widget.update:
+          id: dot_1
+          bg_color: !lambda 'return (id(current_page) == 1) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+      - lvgl.widget.update:
+          id: dot_2
+          bg_color: !lambda 'return (id(current_page) == 2) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+
+  # --- Update LED Ring (Outer Horizon Line — Proportional Warm Amber) ---
+  - id: update_led_ring
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - light.turn_on:
+                id: led_ring
+                red: 100%
+                green: 55%
+                blue: 0%
+                brightness: !lambda |-
+                  float b = id(brightness_pct) / 100.0 * 0.4;
+                  if (b < 0.05) b = 0.05;
+                  return b;
+                transition_length: 300ms
+          else:
+            - light.turn_off:
+                id: led_ring
+                transition_length: 300ms
+
+  # --- Send to Home Assistant ---
+  - id: send_to_ha
+    mode: single
+    then:
+      - homeassistant.service:
+          service: light.turn_on
+          data:
+            entity_id: light.bedroom_group
+            brightness: !lambda |-
+              return id(brightness_pct) * 255 / 100;
+      - if:
+          condition:
+            lambda: 'return !id(light_is_on);'
+          then:
+            - homeassistant.service:
+                service: light.turn_off
+                data:
+                  entity_id: light.bedroom_group
+
+  # --- Guarded Swipe Left ---
+  - id: guarded_swipe_left
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) < 2) {
+                  id(current_page) += 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2;'
+                then:
+                  - lvgl.page.show:
+                      id: page_presets
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Swipe Right ---
+  - id: guarded_swipe_right
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) > 0) {
+                  id(current_page) -= 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 0;'
+                then:
+                  - lvgl.page.show:
+                      id: page_power
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Power Toggle ---
+  - id: guarded_power_toggle
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(light_is_on) = !id(light_is_on);
+                if (id(light_is_on) && id(brightness_pct) == 0) {
+                  id(brightness_pct) = 80;
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+  # --- Guarded Preset Apply ---
+  - id: guarded_preset_apply
+    mode: single
+    parameters:
+      preset_index: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(active_preset) = preset_index;
+                id(light_is_on) = true;
+                switch (preset_index) {
+                  case 0: id(brightness_pct) = 80; break;  // Warm White = Summit
+                  case 1: id(brightness_pct) = 60; break;  // Soft Amber = Ridge
+                  case 2: id(brightness_pct) = 90; break;  // Neutral White = Plateau
+                  case 3: id(brightness_pct) = 15; break;  // Low Nightlight = Valley
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Fonts
+# ---------------------------------------------------------------------------
+font:
+  - file:
+      type: gfonts
+      family: Roboto Mono
+      weight: 400
+    id: font_28
+    size: 28
+    glyphs: "0123456789% "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_18
+    size: 18
+    glyphs: "ONF "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_14
+    size: 14
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz %.-"
+
+# ---------------------------------------------------------------------------
+# LVGL — Topographic Contour Map
+# ---------------------------------------------------------------------------
+lvgl:
+  displays:
+    - main_display
+  touchscreens:
+    - my_touch
+  color_depth: 16
+  buffer_size: 25%
+
+  # Top layer — always-visible 3-dot page indicator
+  top_layer:
+    widgets:
+      - obj:
+          id: page_indicator
+          align: BOTTOM_MID
+          y: -8
+          width: 60
+          height: 12
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          layout:
+            type: FLEX
+            flex_flow: ROW
+            flex_align_main: CENTER
+            flex_align_cross: CENTER
+          widgets:
+            - obj:
+                id: dot_0
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0xFFB000
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_1
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0x333333
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_2
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0x333333
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+
+  # Pages — ORDER: Power (Terrain State), Brightness (Elevation Hero), Presets
+  pages:
+    # ----- PAGE 0: Power (Terrain State) -----
+    # ON = active terrain with summit glow, OFF = flat plain
+    - id: page_power
+      bg_color: 0x050505
+      bg_opa: COVER
+      widgets:
+        # Summit marker — central bright dot (differentiates from tree rings)
+        - obj:
+            id: summit_power
+            align: CENTER
+            width: 20
+            height: 20
+            radius: 10
+            bg_color: 0x333333
+            bg_opa: COVER
+            border_color: 0x555555
+            border_width: 1
+            clickable: true
+            on_click:
+              - script.execute: guarded_power_toggle
+
+        # Power state label
+        - label:
+            id: power_state_label
+            align: CENTER
+            y: 30
+            text_font: font_18
+            text_color: 0x555555
+            text: "OFF"
+
+      on_load:
+        - lambda: 'id(current_page) = 0;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 1: Brightness (Elevation Hero — Topographic Contours) -----
+    # 12 thin concentric contour lines emerge from center as brightness increases
+    # Technical amber on dark charcoal — cartographic aesthetic
+    - id: page_brightness
+      bg_color: 0x0A0A0A
+      bg_opa: COVER
+      widgets:
+        # Contour 12 (outermost) — visible at >= 97%
+        - obj:
+            id: contour_12
+            align: CENTER
+            width: 228
+            height: 228
+            radius: 114
+            bg_opa: TRANSP
+            border_color: 0xFFB000
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 11 — visible at >= 91%
+        - obj:
+            id: contour_11
+            align: CENTER
+            width: 210
+            height: 210
+            radius: 105
+            bg_opa: TRANSP
+            border_color: 0xEEA000
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 10 — visible at >= 83%
+        - obj:
+            id: contour_10
+            align: CENTER
+            width: 192
+            height: 192
+            radius: 96
+            bg_opa: TRANSP
+            border_color: 0xDD9000
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 09 — visible at >= 75%
+        - obj:
+            id: contour_09
+            align: CENTER
+            width: 174
+            height: 174
+            radius: 87
+            bg_opa: TRANSP
+            border_color: 0xCC8000
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 08 — visible at >= 66%
+        - obj:
+            id: contour_08
+            align: CENTER
+            width: 156
+            height: 156
+            radius: 78
+            bg_opa: TRANSP
+            border_color: 0xBB7000
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 07 — visible at >= 58%
+        - obj:
+            id: contour_07
+            align: CENTER
+            width: 138
+            height: 138
+            radius: 69
+            bg_opa: TRANSP
+            border_color: 0xAA6000
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 06 — visible at >= 50%
+        - obj:
+            id: contour_06
+            align: CENTER
+            width: 120
+            height: 120
+            radius: 60
+            bg_opa: TRANSP
+            border_color: 0x995500
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 05 — visible at >= 41%
+        - obj:
+            id: contour_05
+            align: CENTER
+            width: 102
+            height: 102
+            radius: 51
+            bg_opa: TRANSP
+            border_color: 0x884A00
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 04 — visible at >= 33%
+        - obj:
+            id: contour_04
+            align: CENTER
+            width: 84
+            height: 84
+            radius: 42
+            bg_opa: TRANSP
+            border_color: 0x773F00
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 03 — visible at >= 25%
+        - obj:
+            id: contour_03
+            align: CENTER
+            width: 66
+            height: 66
+            radius: 33
+            bg_opa: TRANSP
+            border_color: 0x663400
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 02 — visible at >= 16%
+        - obj:
+            id: contour_02
+            align: CENTER
+            width: 48
+            height: 48
+            radius: 24
+            bg_opa: TRANSP
+            border_color: 0x552900
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Contour 01 (innermost) — visible at >= 8%
+        - obj:
+            id: contour_01
+            align: CENTER
+            width: 30
+            height: 30
+            radius: 15
+            bg_opa: TRANSP
+            border_color: 0x441E00
+            border_width: 2
+            border_opa: TRANSP
+            clickable: false
+
+        # Summit marker — always visible center point
+        - obj:
+            id: summit_brightness
+            align: CENTER
+            width: 8
+            height: 8
+            radius: 4
+            bg_color: 0xFFB000
+            bg_opa: COVER
+            border_width: 0
+            clickable: false
+
+        # Elevation percentage label (below summit)
+        - label:
+            id: elevation_pct_label
+            align: CENTER
+            y: 50
+            text_font: font_28
+            text_color: 0xFFB000
+            text: "50%"
+
+      on_load:
+        - lambda: 'id(current_page) = 1;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 2: Presets (Terrain Zones) -----
+    # Each preset mapped to a terrain zone
+    - id: page_presets
+      bg_color: 0x050505
+      bg_opa: COVER
+      widgets:
+        # Title
+        - label:
+            align: TOP_MID
+            y: 25
+            text_font: font_14
+            text_color: 0x777777
+            text: "Terrain"
+
+        # 2x2 grid container
+        - obj:
+            align: CENTER
+            width: 180
+            height: 160
+            bg_opa: TRANSP
+            border_width: 0
+            pad_all: 6
+            layout:
+              type: FLEX
+              flex_flow: ROW_WRAP
+              flex_align_main: SPACE_EVENLY
+              flex_align_cross: CENTER
+              flex_align_track: SPACE_EVENLY
+            widgets:
+              # Preset 0: Warm White = "Summit"
+              - button:
+                  id: preset_btn_0
+                  width: 80
+                  height: 65
+                  radius: 8
+                  bg_color: 0x111111
+                  border_color: 0x333333
+                  border_width: 1
+                  widgets:
+                    - label:
+                        id: preset_label_0
+                        align: CENTER
+                        text_font: font_14
+                        text_color: 0xFFB000
+                        text: "Summit"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 0
+
+              # Preset 1: Soft Amber = "Ridge"
+              - button:
+                  id: preset_btn_1
+                  width: 80
+                  height: 65
+                  radius: 8
+                  bg_color: 0x111111
+                  border_color: 0x333333
+                  border_width: 1
+                  widgets:
+                    - label:
+                        id: preset_label_1
+                        align: CENTER
+                        text_font: font_14
+                        text_color: 0x555555
+                        text: "Ridge"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 1
+
+              # Preset 2: Neutral White = "Plateau"
+              - button:
+                  id: preset_btn_2
+                  width: 80
+                  height: 65
+                  radius: 8
+                  bg_color: 0x111111
+                  border_color: 0x333333
+                  border_width: 1
+                  widgets:
+                    - label:
+                        id: preset_label_2
+                        align: CENTER
+                        text_font: font_14
+                        text_color: 0x555555
+                        text: "Plateau"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 2
+
+              # Preset 3: Low Nightlight = "Valley"
+              - button:
+                  id: preset_btn_3
+                  width: 80
+                  height: 65
+                  radius: 8
+                  bg_color: 0x111111
+                  border_color: 0x333333
+                  border_width: 1
+                  widgets:
+                    - label:
+                        id: preset_label_3
+                        align: CENTER
+                        text_font: font_14
+                        text_color: 0x555555
+                        text: "Valley"
+                  on_click:
+                    - script.execute:
+                        id: guarded_preset_apply
+                        preset_index: 3
+
+      on_load:
+        - lambda: 'id(current_page) = 2;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
