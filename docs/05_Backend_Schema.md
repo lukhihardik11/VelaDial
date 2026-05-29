@@ -94,6 +94,7 @@ These are not raw sensor readings. They are computed states derived from sensor 
 | `ambient_mode` | TSL2591 lux | `dark` if lux < 5, `dim` if 5–50, `bright` if > 50. | UI contrast/accent adaptation, LED ring intensity |
 | `display_awake` | Touch event, rotary event, or timer | `true` after any input. Reverts to `false` after idle timeout (default: 60 s). | Backlight on/off, LVGL page visibility |
 | `idle_timer` | Last input timestamp | Counts seconds since last user interaction. Resets on any touch, rotation, or press. | Display sleep logic |
+| `active_theme` | Theme Selector | Stores the currently active theme index (0-19). Persists across reboots. | UI rendering, LED ring color |
 
 ### Bedside node derived states
 
@@ -128,6 +129,7 @@ The following table lists the expected entity IDs as they will appear in Home As
 | `sensor.veladial_doorside_backlight_level` | sensor | Internal | On change | Current backlight PWM % |
 | `binary_sensor.veladial_doorside_display_awake` | binary_sensor | Internal | On change | Whether display is active |
 | `sensor.veladial_doorside_wifi_signal` | sensor | WiFi | 60 s | dBm signal strength |
+| `text_sensor.veladial_doorside_active_theme` | text_sensor | Internal | On change | Name of the currently active UI theme |
 
 #### Bedside node entities (ESPHome device name: `veladial_bedside`)
 
@@ -181,6 +183,10 @@ Do not commit live WiFi credentials, API credentials, Home Assistant tokens, Tuy
 - VL53L4CD hand-hold distance threshold (default: 5–10 cm).
 - VL53L4CD hand-hold duration threshold (default: 1.5 s).
 - SHT45 update interval.
+- Active theme index (0-19, persists across reboots).
+- Theme selector timeout (default: 60 s).
+- Long-press duration to enter Theme Selector (default: 1.5 s).
+- Per-theme LED ring RGB color values.
 
 ### Generic example entity aliases
 

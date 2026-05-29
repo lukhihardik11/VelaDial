@@ -37,9 +37,10 @@ All 20 concepts are mandatory and will be explored sequentially:
 19. Vinyl DJ Crossfader
 20. Eclipse Corona
 
-## Production Baseline Rule
+## Production Status (Updated 2026-05-29)
 
-The current production-ish YAML remains the baseline: `esphome/door_side_rotary.yaml`.
+All 20 concepts have been researched, documented, and prototyped. The final production direction has been implemented:
 
-Concept prototypes are allowed to explore expanded pages/screens, visual styles, animations, and interaction models. They are **not** automatically approved for production. After all 20 concepts are researched and coded, a final production direction will be selected.
-selected.
+**`esphome/door_side_rotary.yaml` is now the production multi-theme firmware engine (PR #56).** It contains all 20 themes as selectable options, switchable on-device via a hidden Theme Selector (long-press >1.5s). Compile-passing with 0 errors. Hardware validation NOT YET TESTED.
+
+The concept prototype YAMLs in `esphome/concepts/` remain as reference implementations and are not intended for production use.

@@ -33,13 +33,14 @@ The door-side and bedside nodes use separate I2C buses. TSL2591 and VL53L4CD bot
 
 ## Main UI
 
-The door-side display has exactly 3 primary pages:
+The door-side display has exactly 3 primary control pages, plus a hidden device-level theme selector:
 
 1. Power
 2. Brightness
 3. Presets
+4. Theme Selector (hidden, accessed via long-press >1.5s)
 
-Temperature/humidity data is secondary and does not appear on the main pages.
+The firmware includes **20 selectable UI themes** that can be switched on-device without reflashing. Temperature/humidity data is secondary and does not appear on the main pages.
 
 ## Repository layout
 
@@ -71,19 +72,16 @@ For human review, read in this order:
 
 ## Current firmware status
 
-The ESPHome files are starter bring-up configurations, not final production firmware.
+- `esphome/door_side_rotary.yaml` — **Compile-passing multi-theme firmware candidate** with 20 selectable UI themes. Compile PASSED (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors). RAM: 17.5%, Flash: 65.5%. Hardware validation pending. Not physically validated. Further visual refinement may follow hardware testing.
+- `esphome/bedside_gesture.yaml` — ESP32-C6 + APDS-9960 gesture controller. Hardware validation NOT YET TESTED.
 
-- `esphome/door_side_rotary.yaml` brings up the ELECROW display, touch, encoder, backlight, and basic LVGL page.
-- `esphome/bedside_gesture.yaml` brings up the ESP32-C6 + APDS-9960 gesture controller.
+The next major work items are hardware validation:
 
-The next major work items are validation-first, then bring-up firmware. Production YAML is not the next step:
-
-1. Validate the ELECROW board revision and pinout against the actual hardware before any production firmware.
+1. Validate the ELECROW board revision and pinout against the actual hardware.
 2. Verify I2C scans on both nodes (door-side: `0x29`, `0x44`; bedside: `0x39`, `0x29`).
-3. Verify the VL53L4CD ESPHome support path before writing hold-nightlight firmware. If blocked, surface the decision to the owner before any fallback.
-4. Start with bring-up firmware, not full production YAML.
-5. Door-side bring-up: display, touch, encoder, backlight, TSL2591, SHT45.
-6. Bedside bring-up: APDS-9960 standalone first; VL53L4CD support verification second. **Do not implement sensor fusion in v1.**
+3. Flash the door-side firmware candidate and verify all 20 themes render correctly on the physical display.
+4. Verify the VL53L4CD ESPHome support path before writing hold-nightlight firmware. If blocked, surface the decision to the owner before any fallback.
+5. Bedside bring-up: APDS-9960 standalone first; VL53L4CD support verification second. **Do not implement sensor fusion in v1.**
 
 v1 bedside behavior is APDS-9960 standalone left/right gestures plus VL53L4CD standalone hand-hold nightlight (only if VL53L4CD support is verified). VL53L4CD/APDS-9960 sensor fusion is v2 / future only — not a first-build requirement.
 

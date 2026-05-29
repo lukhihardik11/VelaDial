@@ -123,6 +123,7 @@ All sensors connect via STEMMA QT / Qwiic connectors for solderless daisy-chaini
 - Home Assistant as the automation/control hub.
 - LocalTuya or another local Tuya LAN integration for RGB bulb control.
 - LVGL inside ESPHome for the round display UI.
+- Multi-theme firmware engine (20 selectable UI themes, switchable on-device via hidden Theme Selector).
 
 ## ESPHome support notes
 
@@ -163,6 +164,8 @@ Live network credentials, OTA credentials, API credentials, and Tuya local keys 
 - Proximity hold (VL53L4CD: hand steady at 5–10 cm for 1.5 s) triggers a warm 10% nightlight mode.
 - Rotary encoder updates brightness in predictable increments.
 - Touch UI supports power and preset selection.
+- Hidden Theme Selector (long-press >1.5s) allows switching between 20 UI themes without reflashing.
+- Active theme persists across reboots and is exposed as a diagnostic text sensor to Home Assistant.
 - Display sleeps or dims after inactivity.
 - Display backlight adapts automatically to ambient room light (TSL2591 lux → backlight PWM).
 
@@ -173,6 +176,7 @@ Live network credentials, OTA credentials, API credentials, and Tuya local keys 
 - Fast response target: under 500 ms from user action to visible light change.
 - Safe defaults after reboot.
 - YAML should remain readable enough for manual debugging.
+- Multi-theme engine must fit within ESP32-S3 RAM/Flash constraints (target: <25% RAM, <80% Flash).
 
 ## Known implementation notes
 

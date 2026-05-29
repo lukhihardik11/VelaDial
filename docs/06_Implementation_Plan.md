@@ -208,11 +208,11 @@ Goal: connect physical input to lighting behavior, matching the locked behavior 
 
 Locked door-side behavior (must match):
 
-- Main UI is exactly 3 pages: Power, Brightness, Presets. **No required 4th Environment page.**
+- Main control UI is exactly 3 pages: Power, Brightness, Presets. (Plus a hidden Theme Selector). **No required 4th Environment page.**
 - 4 first-build presets only: Warm White, Soft Amber, Neutral White, Low Nightlight. No dense color picker / color wheel / per-bulb editor; optional RGB accent is v2 / future only.
 - Page navigation: horizontal swipe (left = next, right = previous) with a 3-dot page indicator near the bottom; active dot amber.
 - Wake behavior is **wake-only first**: touch / knob rotation / knob press while asleep wake the display only; a second deliberate action while awake toggles or sends a command.
-- Per-page knob press: Power = toggle the bedroom light group; Brightness = return to Power page; Presets = apply highlighted preset.
+- Per-page knob press: Power = toggle the bedroom light group; Brightness = return to Power page; Presets = apply highlighted preset. Long-press (>1.5s) from any page enters the Theme Selector.
 - Use "Unavailable" wording when Home Assistant / Pi / LAN state cannot be confirmed; subtle persistent badge only — no flashing, popups, audio, or full-screen aggressive errors.
 
 Tasks:
@@ -221,6 +221,7 @@ Tasks:
 2. Add brightness arc and encoder binding (about 5 % steps, debounced).
 3. Debounce encoder updates so commands feel smooth without flooding Home Assistant.
 4. Add the 4 locked color preset actions (Warm White, Soft Amber, Neutral White, Low Nightlight) as 2×2 large touch targets with amber-bordered active preset.
+4b. Add the hidden Theme Selector (long-press to enter, rotate to browse 20 themes, press to apply).
 5. Read current light state back from Home Assistant where possible and reconcile UI.
 
 Done when:

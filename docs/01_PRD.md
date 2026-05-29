@@ -65,11 +65,12 @@ A smart-home builder who wants a custom physical interface for local RGB lightin
 
 ### Main door-side UI pages
 
-The main door-side UI remains focused on three pages:
+The main door-side UI remains focused on three primary control pages, plus a hidden device-level theme selector:
 
 1. Power
 2. Brightness
 3. Presets
+4. Theme Selector (hidden, accessed via long-press)
 
 ## Nice-to-have features
 
@@ -89,7 +90,7 @@ The main door-side UI remains focused on three pages:
 - No 4th required environment page in the first UI build.
 - No cloud dependency for sensor behavior.
 - No automatic comfort/HVAC control in the first build.
-- No production firmware changes in this documentation step.
+- No production firmware changes in this documentation step (completed in PR #56).
 - No second SHT45 sensor for bedside in the first build.
 - No I2C multiplexer required for the first-build architecture.
 - No VL53L4CD firmware, ESPHome YAML, Home Assistant logic, or UI element in v1 — deferred to v2 / future (Option B, recorded 2026-05-25). The sensor remains physically present on the bedside breadboard but is unused by v1 software.

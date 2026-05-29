@@ -34,11 +34,12 @@ VelaDial should feel like a small, quiet bedside or door-side instrument rather 
 
 ## Main UI pages
 
-The main door-side UI has exactly 3 primary pages:
+The main door-side UI has exactly 3 primary control pages, plus a hidden device-level theme selector:
 
 1. Power
 2. Brightness
 3. Presets
+4. Theme Selector (hidden, accessed via long-press)
 
 ## Interaction model
 
@@ -75,6 +76,7 @@ Knob press is page-specific and applies only when the display is awake:
 - **Power page:** knob press toggles the bedroom light group (same as tapping the center).
 - **Brightness page:** knob press returns to the Power page.
 - **Presets page:** knob press applies the currently highlighted preset.
+- **Theme Selector (any page):** long-press (>1.5s) enters the Theme Selector.
 - **While asleep:** knob press wakes only.
 
 ## UI screens
@@ -142,6 +144,7 @@ This section describes the **door-side WS2812 LED ring** built into the ELECROW 
 - No flashing error patterns at night.
 - No aggressive animations.
 - Optional future: ambient-aware LED ring intensity.
+- **Theme-colored:** The LED ring color matches the currently active UI theme (e.g., blue for Minimal Thermostat, gold for Eclipse Corona).
 
 ## Bedside sensor UX
 
@@ -212,6 +215,35 @@ When Home Assistant, the Raspberry Pi, or the local LAN is unreachable, the door
 - Avoid tiny widgets and dense dashboard layouts.
 - Avoid complex 3D, heavy gradients, and excessive animation in final firmware.
 - AI-generated visual concepts can inspire the design, but final UI must be practical for ESPHome LVGL on a 240x240 round display.
+- The production firmware contains 20 selectable UI themes. Each theme must individually remain within LVGL performance constraints.
+- Theme switching occurs at runtime without reflashing; all 20 themes share the same LVGL widget pool.
+
+## Available UI Themes (20 total)
+
+The production firmware includes the following selectable themes, each with a unique visual metaphor and LED ring color:
+
+| # | Theme Name | LED Ring Color |
+|---|-----------|----------------|
+| 0 | Minimal Thermostat | Blue `#4FC3F7` |
+| 1 | SmartKnob Arc | Amber `#FFB000` |
+| 2 | Large Center Power | Green `#4CAF50` |
+| 3 | Single-Page Simple | Warm `#FFB74D` |
+| 4 | Preset Ring | Amber `#FFB000` |
+| 5 | Night Mode Ultra-Min | Deep Red `#FF4400` |
+| 6 | Text-First Utility | Amber `#FFB000` |
+| 7 | Apple Watch Complications | Blue `#4FC3F7` |
+| 8 | LED-Ring Status | Amber `#FFB000` |
+| 9 | Three-Screen Carousel | Amber `#FFB000` |
+| 10 | Brightness-First | Amber `#FFB000` |
+| 11 | Door Switch Replace | Green `#4CAF50` |
+| 12 | Lunar Phase | Moon White `#E8E0D0` |
+| 13 | Sundial Shadow | Gold `#FFB000` |
+| 14 | Tree Ring Growth | Wood `#FFD080` |
+| 15 | Topographic Contour | Amber `#FFB000` |
+| 16 | Iris Aperture | Amber `#FFB000` |
+| 17 | Radar Sweep | Amber `#FFB000` |
+| 18 | Vinyl DJ Crossfader | Amber `#FFB000` |
+| 19 | Eclipse Corona | Gold `#FFB000` |
 
 ## Design references
 

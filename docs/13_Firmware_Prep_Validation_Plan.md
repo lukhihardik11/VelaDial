@@ -12,8 +12,8 @@ This document defines the controlled validation sequence required before writing
 
 **This is not production firmware.** This plan validates hardware, ESPHome component support, I2C addresses, and the Home Assistant control path before any production YAML is written.
 
-**Existing YAML files are bring-up/starter configs only:**
-- `esphome/door_side_rotary.yaml` — basic display/touch/encoder bring-up, not production UI
+**Current YAML file status (updated 2026-05-29):**
+- `esphome/door_side_rotary.yaml` — **Production multi-theme firmware engine** (20 selectable UI themes, compile-passing, PR #56). Hardware validation NOT YET TESTED on physical board.
 - `esphome/bedside_gesture.yaml` — basic APDS-9960 bring-up with known issues (60s update interval too slow for gestures)
 
 This document supports `docs/06_Implementation_Plan.md` by providing a practical validation checklist. Production firmware requires validated hardware, confirmed component support, and verified I2C communication.
@@ -83,7 +83,7 @@ This checklist supports the phases in `docs/06_Implementation_Plan.md`. Complete
 - ⚠️ **PARTIAL:** Some GPIOs differ but workarounds documented
 - ❌ **FAIL:** Critical GPIOs wrong and no workaround
 
-**Gate:** Door-side sensors cannot be validated until this passes. Production door-side firmware cannot be written until this passes.
+**Gate:** Door-side sensors cannot be validated until this passes. Production door-side firmware has been written (PR #56) but cannot be validated on hardware until this passes.
 
 ---
 
@@ -327,13 +327,13 @@ Each YAML will be created only when its validation phase begins.
 
 **One phase at a time. One branch per phase. One PR per phase.**
 
-**No production firmware until all relevant validation phases pass.**
+**Production door-side firmware has been written and compiles cleanly (PR #56), but hardware validation is still required before deployment. No firmware should be flashed to physical hardware until relevant validation phases pass.**
 
 ---
 
 ## Document Control
 
-**Version:** 1.0  
-**Status:** Validation plan — approved for execution  
-**Next step:** Execute VL53L4CD support verification  
+**Version:** 1.1  
+**Status:** Validation plan — production firmware written (PR #56), hardware validation pending  
+**Next step:** Execute ELECROW board validation (flash production firmware, verify all 20 themes)  
 **Owner approval required:** Before each phase transition
