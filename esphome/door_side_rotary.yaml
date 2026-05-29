@@ -2,7 +2,7 @@
 # VelaDial — Door-Side Multi-Theme Engine
 # ===========================================================================
 # Hardware:  ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display (240×240)
-# Status:    DRAFT — COMPILE PENDING / HARDWARE VALIDATION PENDING
+# Status:    DRAFT — COMPILE PASSED / HARDWARE VALIDATION PENDING
 # Version:   v2 multi-theme engine
 # Branch:    firmware/door-side-multi-theme-engine
 # ---------------------------------------------------------------------------
@@ -18,6 +18,15 @@
 #   - All themes control light.bedroom_group
 #   - 4 locked presets: Warm White, Soft Amber, Neutral White, Low Nightlight
 #   - Wake-only-first enforcement on all inputs
+# ---------------------------------------------------------------------------
+# VISUAL HONESTY NOTE:
+#   This firmware is the integrated 20-theme engine FOUNDATION.
+#   Current themes differentiate via palette, labels, and LED ring color.
+#   Further visual refinement (per-theme widget layouts matching the rich
+#   concept prototypes) may be needed after hardware testing.
+#   Goal: one compile-passing firmware with all 20 selectable themes.
+#   Status: compile-passing multi-theme firmware CANDIDATE.
+#   NOT physically validated. NOT final visual perfection.
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
@@ -257,14 +266,22 @@ binary_sensor:
       inverted: true
     id: rotary_button
     name: "Rotary Button"
-    on_press:
-      - script.execute: handle_knob_press
+    filters:
+      - delayed_on: 30ms
     on_multi_click:
       # Long press (>1.5s) = enter/exit theme selector
+      # Evaluated first — fires while button still held
       - timing:
           - ON for at least 1.5s
         then:
           - script.execute: toggle_theme_selector
+      # Short press (<600ms press, then released for at least 50ms)
+      # Only fires AFTER release — does NOT fire during long press
+      - timing:
+          - ON for at most 600ms
+          - OFF for at least 50ms
+        then:
+          - script.execute: handle_knob_press
 
   - platform: status
     id: api_connected
@@ -320,9 +337,7 @@ globals:
     type: bool
     initial_value: "false"
 
-  - id: long_press_handled
-    type: bool
-    initial_value: "false"
+  # long_press_handled removed — on_multi_click now cleanly separates short/long press
 
 # ---------------------------------------------------------------------------
 # LVGL Configuration
@@ -866,7 +881,6 @@ script:
                   - lambda: |-
                       id(theme_selector_active) = true;
                       id(theme_preview_index) = id(active_theme);
-                      id(long_press_handled) = true;
                   - lvgl.widget.update:
                       id: page_indicator
                       hidden: true
@@ -1117,42 +1131,35 @@ script:
           then:
             - script.execute: wake_screen_from_knob
           else:
+            - script.execute: screen_idle_timer
             - if:
                 condition:
-                  lambda: 'return id(long_press_handled);'
+                  lambda: 'return id(theme_selector_active);'
                 then:
-                  # Long press was just handled, clear the flag and skip
-                  - lambda: 'id(long_press_handled) = false;'
-                else:
-                  - script.execute: screen_idle_timer
-                  - if:
-                      condition:
-                        lambda: 'return id(theme_selector_active);'
-                      then:
-                        # In theme selector: apply selected theme
-                        - script.execute: apply_theme_from_selector
-                  - if:
-                      condition:
-                        lambda: 'return !id(theme_selector_active) && id(current_page) == 0;'
-                      then:
-                        - script.execute: handle_power_toggle
-                  - if:
-                      condition:
-                        lambda: 'return !id(theme_selector_active) && id(current_page) == 1;'
-                      then:
-                        - lvgl.page.show:
-                            id: power_page
-                            animation: MOVE_RIGHT
-                            time: 200ms
-                        - lambda: 'id(current_page) = 0;'
-                        - script.execute: update_page_indicator
-                  - if:
-                      condition:
-                        lambda: 'return !id(theme_selector_active) && id(current_page) == 2;'
-                      then:
-                        - script.execute:
-                            id: apply_preset
-                            preset_index: !lambda 'return id(highlighted_preset);'
+                  # In theme selector: apply selected theme
+                  - script.execute: apply_theme_from_selector
+            - if:
+                condition:
+                  lambda: 'return !id(theme_selector_active) && id(current_page) == 0;'
+                then:
+                  - script.execute: handle_power_toggle
+            - if:
+                condition:
+                  lambda: 'return !id(theme_selector_active) && id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: power_page
+                      animation: MOVE_RIGHT
+                      time: 200ms
+                  - lambda: 'id(current_page) = 0;'
+                  - script.execute: update_page_indicator
+            - if:
+                condition:
+                  lambda: 'return !id(theme_selector_active) && id(current_page) == 2;'
+                then:
+                  - script.execute:
+                      id: apply_preset
+                      preset_index: !lambda 'return id(highlighted_preset);'
 
   # =========================================================================
   # ACTION SCRIPTS

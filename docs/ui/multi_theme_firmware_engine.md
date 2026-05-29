@@ -1,7 +1,10 @@
 # Multi-Theme Firmware Engine Architecture
 
+> **Status:** Compile-passing multi-theme firmware candidate. Hardware validation pending.  
+> This is the integrated 20-theme engine foundation. Current themes differentiate via palette, labels, and LED ring color. Further visual refinement (per-theme widget layouts matching the rich concept prototypes) may be needed after hardware testing and contact-sheet review. Goal: one compile-passing firmware with all 20 selectable themes, not final visual perfection.
+
 ## 1. Overview
-The VelaDial door-side controller will now run a single, unified firmware containing all 20 UI themes. This requires a fundamental shift from "one YAML per concept" to a "shared engine with dynamic rendering" approach.
+The VelaDial door-side controller runs a single, unified firmware containing all 20 UI themes. This is a fundamental shift from "one YAML per concept" to a "shared engine with dynamic rendering" approach.
 
 ## 2. Shared State Architecture
 To avoid duplicating control logic 20 times, the firmware will rely on a core set of shared globals:

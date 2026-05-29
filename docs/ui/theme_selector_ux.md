@@ -1,5 +1,9 @@
 # Theme Selector UX
 
+> **Note:** Knob button behavior uses `on_multi_click` exclusively (no `on_press`).
+> Short press (<600ms + release) = page-specific action. Long press (>1.5s) = theme selector.
+> Long press does NOT trigger short-press action.
+
 ## 1. Accessing the Selector
 The Theme Selector is a hidden, device-level menu. It should not interfere with daily lighting control.
 - **Action:** Long-press the rotary knob (hold for > 1.5 seconds).

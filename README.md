@@ -72,14 +72,14 @@ For human review, read in this order:
 
 ## Current firmware status
 
-- `esphome/door_side_rotary.yaml` — **Production multi-theme firmware engine** with 20 selectable UI themes. Compile-passing (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors). RAM: 17.5%, Flash: 65.5%. Hardware validation NOT YET TESTED on physical board.
+- `esphome/door_side_rotary.yaml` — **Compile-passing multi-theme firmware candidate** with 20 selectable UI themes. Compile PASSED (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors). RAM: 17.5%, Flash: 65.5%. Hardware validation pending. Not physically validated. Further visual refinement may follow hardware testing.
 - `esphome/bedside_gesture.yaml` — ESP32-C6 + APDS-9960 gesture controller. Hardware validation NOT YET TESTED.
 
 The next major work items are hardware validation:
 
 1. Validate the ELECROW board revision and pinout against the actual hardware.
 2. Verify I2C scans on both nodes (door-side: `0x29`, `0x44`; bedside: `0x39`, `0x29`).
-3. Flash the production door-side firmware and verify all 20 themes render correctly on the physical display.
+3. Flash the door-side firmware candidate and verify all 20 themes render correctly on the physical display.
 4. Verify the VL53L4CD ESPHome support path before writing hold-nightlight firmware. If blocked, surface the decision to the owner before any fallback.
 5. Bedside bring-up: APDS-9960 standalone first; VL53L4CD support verification second. **Do not implement sensor fusion in v1.**
 

@@ -1,5 +1,10 @@
 # VelaDial Theme Visual Upgrade Plan
 
+> **Status:** This plan documents the visual upgrade path for the multi-theme firmware candidate.  
+> PR #56 creates the integrated 20-theme firmware engine foundation.  
+> Further visual refinement may be needed after hardware testing and contact-sheet review.  
+> Current goal is one firmware with all 20 selectable themes, not final visual perfection.
+
 ## 1. Critique of Current Concept Prototypes
 The initial 20 concept prototypes served their purpose: proving that 20 distinct metaphors could be compiled and rendered within ESPHome's LVGL constraints. However, as noted in the visual contact sheet review, they currently look too "AI-generated" and basic. 
 
