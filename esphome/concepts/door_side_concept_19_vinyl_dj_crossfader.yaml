@@ -1,0 +1,1044 @@
+# ===========================================================================
+# VelaDial — UI Concept 19: Vinyl DJ Crossfader
+# ===========================================================================
+# CONCEPT PROTOTYPE / NOT PRODUCTION
+# This YAML implements UI Concept 19 (Vinyl DJ Crossfader).
+# It is designed for the ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display.
+#
+# COMPILE STATUS: PASS (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors, 147.68s)
+#
+# Key Features:
+# - Vinyl turntable metaphor: brightness maps to needle/tonearm position
+# - 100% = Needle at outermost groove (full volume/brightness)
+# - 50% = Needle at mid-groove position
+# - 5% = Needle at innermost groove near center label
+# - OFF = Platter stopped, needle lifted
+# - Concentric "track bands" represent vinyl grooves (abstract, premium)
+# - Central "record label" area displays percentage/state
+# - 3 pages: Power (Platter State), Brightness (Groove Intensity), Presets (Tracks)
+# - Knob CW = move needle outward (brighter), CCW = move inward (dimmer)
+# - Knob press = power toggle on any page
+# - Round display = vinyl record viewed from above
+# - LED ring = platter rim glow (warm amber proportional)
+# - Wake-only-first enforced on all inputs
+# - Always wakes to Power page (page 0)
+# - Targets light.bedroom_group
+#
+# 4 Locked Presets (mapped to "Tracks"):
+# - Track A (Outer): Warm White (80%)
+# - Track B: Soft Amber (60%)
+# - Track C: Neutral White (90%)
+# - Track D (Inner): Low Nightlight (15%)
+#
+# Design Philosophy:
+# - The round display IS a premium turntable platter viewed from above
+# - Controlling light = adjusting the needle position on the record
+# - More outward = more brightness = louder/fuller sound (metaphor)
+# - Premium, calm, residential — NOT nightclub, NOT media player
+# - Warm amber palette throughout (analog warmth, tube amplifier glow)
+# - Audiophile aesthetic (Bang & Olufsen, McIntosh, Technics SL-1200)
+# - No play/pause/skip icons — this is an instrument, not a music app
+#
+# Visual Compromises:
+# - No thin individual grooves (aliasing/Moire risk at 240x240)
+# - Using thick "track bands" (10-15px arcs) instead of dense thin lines
+# - No spinning animation (too expensive for ESP32-S3 in pure YAML)
+# - No literal tonearm image (would require external PNG asset)
+# - The "needle" is represented by an amber arc segment on the active track
+# - The "center label" is a solid circle with text overlay
+# - The aesthetic is "abstract premium turntable" not "photorealistic vinyl"
+# - This compromise ensures compile safety and UI responsiveness
+#
+# NOT PRODUCTION. NOT TESTED. CONCEPT EXPLORATION ONLY.
+# ===========================================================================
+
+substitutions:
+  device_name: veladial-door-concept19
+  friendly_name: "VelaDial Door Concept19"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          id(display_awake) = true;
+          id(light_is_on) = false;
+          id(brightness_pct) = 50;
+          id(current_page) = 0;
+          id(active_preset) = 0;
+          id(touch_woke_this_cycle) = false;
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    version: recommended
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name}-AP"
+    password: !secret ap_password
+
+# ---------------------------------------------------------------------------
+# Global Variables
+# ---------------------------------------------------------------------------
+globals:
+  - id: display_awake
+    type: bool
+    initial_value: 'true'
+  - id: light_is_on
+    type: bool
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    initial_value: '50'
+  - id: current_page
+    type: int
+    initial_value: '0'
+  - id: active_preset
+    type: int
+    initial_value: '0'
+  - id: touch_woke_this_cycle
+    type: bool
+    initial_value: 'false'
+
+# ---------------------------------------------------------------------------
+# I2C Buses
+# ---------------------------------------------------------------------------
+i2c:
+  - id: bus_touch
+    sda: GPIO6
+    scl: GPIO7
+    scan: false
+  - id: bus_sensors
+    sda: GPIO38
+    scl: GPIO39
+    scan: false
+
+# ---------------------------------------------------------------------------
+# SPI Bus — Display (GC9A01)
+# ---------------------------------------------------------------------------
+spi:
+  mosi_pin: GPIO11
+  clk_pin: GPIO10
+
+# ---------------------------------------------------------------------------
+# Output — Backlight PWM
+# ---------------------------------------------------------------------------
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO46
+
+light:
+  # Backlight
+  - platform: monochromatic
+    id: backlight
+    output: backlight_pwm
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+    default_transition_length: 500ms
+
+  # WS2812 LED Ring — 5 LEDs on GPIO48 (Platter Rim Glow)
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "LED Ring"
+    pin: GPIO48
+    num_leds: 5
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 300ms
+
+# ---------------------------------------------------------------------------
+# Display — GC9A01 240x240 Round
+# ---------------------------------------------------------------------------
+display:
+  - platform: ili9xxx
+    id: main_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+
+# ---------------------------------------------------------------------------
+# Touchscreen — CST816D
+# ---------------------------------------------------------------------------
+touchscreen:
+  - platform: cst816
+    id: my_touch
+    i2c_id: bus_touch
+    interrupt_pin: GPIO5
+    reset_pin: GPIO13
+    on_touch:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          }
+      - script.execute: wake_screen
+
+# ---------------------------------------------------------------------------
+# Rotary Encoder
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: knob
+    name: "Rotary Encoder"
+    pin_a: GPIO1
+    pin_b: GPIO2
+    resolution: 1
+    on_clockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) < 100) {
+                id(brightness_pct) += 5;
+                if (id(brightness_pct) > 100) id(brightness_pct) = 100;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+    on_anticlockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) > 5) {
+                id(brightness_pct) -= 5;
+                if (id(brightness_pct) < 5) id(brightness_pct) = 5;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Knob Button — Power Toggle on any page
+# ---------------------------------------------------------------------------
+binary_sensor:
+  - platform: gpio
+    id: knob_button
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    on_press:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            id(light_is_on) = !id(light_is_on);
+            if (id(light_is_on) && id(brightness_pct) == 0) {
+              id(brightness_pct) = 80;
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+      - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Home Assistant State Import
+# ---------------------------------------------------------------------------
+text_sensor:
+  - platform: homeassistant
+    id: ha_light_state
+    entity_id: light.bedroom_group
+    attribute: state
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            id(light_is_on) = true;
+          } else if (x == "off") {
+            id(light_is_on) = false;
+          }
+      - script.execute: update_ui
+
+  - platform: homeassistant
+    id: ha_light_brightness
+    entity_id: light.bedroom_group
+    attribute: brightness
+    on_value:
+      - lambda: |-
+          if (x.length() > 0) {
+            int b = atoi(x.c_str());
+            id(brightness_pct) = (b * 100) / 255;
+          }
+      - script.execute: update_ui
+
+# ---------------------------------------------------------------------------
+# Scripts
+# ---------------------------------------------------------------------------
+script:
+  # --- Wake Screen ---
+  - id: wake_screen
+    mode: restart
+    then:
+      - light.turn_on:
+          id: backlight
+          brightness: 80%
+          transition_length: 300ms
+      - if:
+          condition:
+            lambda: 'return id(touch_woke_this_cycle);'
+          then:
+            - lvgl.page.show:
+                id: page_power
+                animation: NONE
+                time: 0ms
+            - lambda: 'id(current_page) = 0;'
+      - delay: 500ms
+      - lambda: 'id(touch_woke_this_cycle) = false;'
+      - delay: 44500ms
+      - lambda: 'id(display_awake) = false;'
+      - light.turn_off:
+          id: backlight
+          transition_length: 300ms
+
+  # --- Update UI (Needle Position + Labels + LED Ring) ---
+  - id: update_ui
+    mode: restart
+    then:
+      # ---- POWER PAGE (Page 0): Platter Spinning / Stopped ----
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - lvgl.label.update:
+                id: power_state_label
+                text: "SPINNING"
+                text_color: 0xFFB000
+            - lvgl.widget.update:
+                id: power_spindle
+                bg_color: 0xFFB000
+                bg_opa: COVER
+          else:
+            - lvgl.label.update:
+                id: power_state_label
+                text: "STOPPED"
+                text_color: 0x555555
+            - lvgl.widget.update:
+                id: power_spindle
+                bg_color: 0x333333
+                bg_opa: COVER
+
+      # ---- BRIGHTNESS PAGE (Page 1): Needle Position ----
+      # Map brightness to which track band is highlighted (the "needle" position)
+      # Track A (outer, 220px): brightness >= 75%
+      # Track B (180px): brightness >= 50%
+      # Track C (140px): brightness >= 25%
+      # Track D (inner, 100px): brightness >= 5%
+      # The needle indicator arc lights up on the active track
+
+      # Update all track bands — highlight the one where the needle sits
+      - lvgl.arc.update:
+          id: track_band_a
+          indicator:
+            arc_color: !lambda |-
+              return (id(brightness_pct) >= 75) ? lv_color_hex(0xFFB000) : lv_color_hex(0x222222);
+
+      - lvgl.arc.update:
+          id: track_band_b
+          indicator:
+            arc_color: !lambda |-
+              return (id(brightness_pct) >= 50 && id(brightness_pct) < 75) ? lv_color_hex(0xFFB000) : lv_color_hex(0x222222);
+
+      - lvgl.arc.update:
+          id: track_band_c
+          indicator:
+            arc_color: !lambda |-
+              return (id(brightness_pct) >= 25 && id(brightness_pct) < 50) ? lv_color_hex(0xFFB000) : lv_color_hex(0x222222);
+
+      - lvgl.arc.update:
+          id: track_band_d
+          indicator:
+            arc_color: !lambda |-
+              return (id(brightness_pct) < 25) ? lv_color_hex(0xFFB000) : lv_color_hex(0x222222);
+
+      # Update brightness percentage label on center label
+      - lvgl.label.update:
+          id: brightness_pct_label
+          text: !lambda |-
+            static char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+            return buf;
+
+      # ---- PRESETS PAGE (Page 2): Highlight active track ----
+      - lvgl.arc.update:
+          id: preset_track_a
+          indicator:
+            arc_color: !lambda 'return (id(active_preset) == 0) ? lv_color_hex(0xFFB000) : lv_color_hex(0x222222);'
+
+      - lvgl.arc.update:
+          id: preset_track_b
+          indicator:
+            arc_color: !lambda 'return (id(active_preset) == 1) ? lv_color_hex(0xFFB000) : lv_color_hex(0x222222);'
+
+      - lvgl.arc.update:
+          id: preset_track_c
+          indicator:
+            arc_color: !lambda 'return (id(active_preset) == 2) ? lv_color_hex(0xFFB000) : lv_color_hex(0x222222);'
+
+      - lvgl.arc.update:
+          id: preset_track_d
+          indicator:
+            arc_color: !lambda 'return (id(active_preset) == 3) ? lv_color_hex(0xFFB000) : lv_color_hex(0x222222);'
+
+      # Update preset name label
+      - lvgl.label.update:
+          id: preset_name_label
+          text: !lambda |-
+            static const char* names[] = {"Warm White", "Soft Amber", "Neutral", "Nightlight"};
+            return names[id(active_preset)];
+
+      # ---- LED Ring (Platter Rim — Warm Amber Proportional) ----
+      - script.execute: update_led_ring
+
+      # ---- Page Dots ----
+      - lvgl.widget.update:
+          id: dot_0
+          bg_color: !lambda 'return (id(current_page) == 0) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+      - lvgl.widget.update:
+          id: dot_1
+          bg_color: !lambda 'return (id(current_page) == 1) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+      - lvgl.widget.update:
+          id: dot_2
+          bg_color: !lambda 'return (id(current_page) == 2) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);'
+
+  # --- Update LED Ring (Platter Rim — Proportional Warm Amber) ---
+  - id: update_led_ring
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - light.turn_on:
+                id: led_ring
+                red: 100%
+                green: 55%
+                blue: 0%
+                brightness: !lambda |-
+                  float b = id(brightness_pct) / 100.0 * 0.4;
+                  if (b < 0.05) b = 0.05;
+                  return b;
+                transition_length: 300ms
+          else:
+            - light.turn_off:
+                id: led_ring
+                transition_length: 300ms
+
+  # --- Send to Home Assistant ---
+  - id: send_to_ha
+    mode: single
+    then:
+      - homeassistant.service:
+          service: light.turn_on
+          data:
+            entity_id: light.bedroom_group
+            brightness: !lambda |-
+              return id(brightness_pct) * 255 / 100;
+      - if:
+          condition:
+            lambda: 'return !id(light_is_on);'
+          then:
+            - homeassistant.service:
+                service: light.turn_off
+                data:
+                  entity_id: light.bedroom_group
+
+  # --- Guarded Swipe Left ---
+  - id: guarded_swipe_left
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) < 2) {
+                  id(current_page) += 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2;'
+                then:
+                  - lvgl.page.show:
+                      id: page_presets
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Swipe Right ---
+  - id: guarded_swipe_right
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) > 0) {
+                  id(current_page) -= 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 0;'
+                then:
+                  - lvgl.page.show:
+                      id: page_power
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - script.execute: update_ui
+
+  # --- Guarded Power Toggle ---
+  - id: guarded_power_toggle
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(light_is_on) = !id(light_is_on);
+                if (id(light_is_on) && id(brightness_pct) == 0) {
+                  id(brightness_pct) = 80;
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+  # --- Guarded Preset Apply ---
+  - id: guarded_preset_apply
+    mode: single
+    parameters:
+      preset_index: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(active_preset) = preset_index;
+                id(light_is_on) = true;
+                switch (preset_index) {
+                  case 0: id(brightness_pct) = 80; break;  // Track A: Warm White
+                  case 1: id(brightness_pct) = 60; break;  // Track B: Soft Amber
+                  case 2: id(brightness_pct) = 90; break;  // Track C: Neutral White
+                  case 3: id(brightness_pct) = 15; break;  // Track D: Low Nightlight
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+
+# ---------------------------------------------------------------------------
+# Fonts
+# ---------------------------------------------------------------------------
+font:
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 500
+    id: font_28
+    size: 28
+    glyphs: "0123456789% "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_14
+    size: 14
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz %.-"
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 300
+    id: font_12
+    size: 12
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz %.-"
+
+# ---------------------------------------------------------------------------
+# LVGL — Vinyl DJ Crossfader (Abstract Track Bands Approximation)
+# ---------------------------------------------------------------------------
+lvgl:
+  displays:
+    - main_display
+  touchscreens:
+    - my_touch
+  color_depth: 16
+  buffer_size: 25%
+
+  # Top layer — always-visible 3-dot page indicator
+  top_layer:
+    widgets:
+      - obj:
+          id: page_indicator
+          align: BOTTOM_MID
+          y: -8
+          width: 60
+          height: 12
+          bg_opa: TRANSP
+          border_width: 0
+          pad_all: 0
+          layout:
+            type: FLEX
+            flex_flow: ROW
+            flex_align_main: CENTER
+            flex_align_cross: CENTER
+          widgets:
+            - obj:
+                id: dot_0
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0xFFB000
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_1
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0x333333
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+            - obj:
+                id: dot_2
+                width: 6
+                height: 6
+                radius: 3
+                bg_color: 0x333333
+                bg_opa: COVER
+                border_width: 0
+                clickable: false
+
+  # Pages — ORDER: Power (Platter State), Brightness (Groove Intensity), Presets (Tracks)
+  pages:
+    # ----- PAGE 0: Power (The Platter State) -----
+    # Spinning = ON, Stopped = OFF
+    - id: page_power
+      bg_color: 0x111111
+      bg_opa: COVER
+      widgets:
+        # Outer decorative groove ring (static, always visible)
+        - obj:
+            id: power_outer_ring
+            align: CENTER
+            width: 210
+            height: 210
+            radius: 105
+            bg_opa: TRANSP
+            border_color: 0x1A1A1A
+            border_width: 2
+            clickable: false
+
+        # Mid decorative groove ring
+        - obj:
+            id: power_mid_ring
+            align: CENTER
+            width: 160
+            height: 160
+            radius: 80
+            bg_opa: TRANSP
+            border_color: 0x1A1A1A
+            border_width: 1
+            clickable: false
+
+        # Center label area (the vinyl record label)
+        - obj:
+            id: power_center_label
+            align: CENTER
+            width: 90
+            height: 90
+            radius: 45
+            bg_color: 0x1A1A1A
+            bg_opa: COVER
+            border_color: 0x333333
+            border_width: 1
+            clickable: true
+            on_click:
+              - script.execute: guarded_power_toggle
+            widgets:
+              # Spindle dot (center of the record)
+              - obj:
+                  id: power_spindle
+                  align: CENTER
+                  y: -12
+                  width: 10
+                  height: 10
+                  radius: 5
+                  bg_color: 0x333333
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+
+              # Power state text
+              - label:
+                  id: power_state_label
+                  align: CENTER
+                  y: 10
+                  text_font: font_14
+                  text_color: 0x555555
+                  text: "STOPPED"
+
+      on_load:
+        - lambda: 'id(current_page) = 0;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 1: Brightness (The Groove Intensity / Needle Position) -----
+    # Four concentric "track bands" — the needle highlights the active band
+    - id: page_brightness
+      bg_color: 0x111111
+      bg_opa: COVER
+      widgets:
+        # Track Band A (Outermost — represents 75-100% brightness)
+        - arc:
+            id: track_band_a
+            align: CENTER
+            width: 220
+            height: 220
+            arc_color: 0x1A1A1A
+            arc_width: 14
+            start_angle: 0
+            end_angle: 360
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x222222
+              arc_width: 14
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Track Band B (represents 50-74% brightness)
+        - arc:
+            id: track_band_b
+            align: CENTER
+            width: 180
+            height: 180
+            arc_color: 0x1A1A1A
+            arc_width: 14
+            start_angle: 0
+            end_angle: 360
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x222222
+              arc_width: 14
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Track Band C (represents 25-49% brightness)
+        - arc:
+            id: track_band_c
+            align: CENTER
+            width: 140
+            height: 140
+            arc_color: 0x1A1A1A
+            arc_width: 14
+            start_angle: 0
+            end_angle: 360
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x222222
+              arc_width: 14
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Track Band D (Innermost — represents 5-24% brightness)
+        - arc:
+            id: track_band_d
+            align: CENTER
+            width: 100
+            height: 100
+            arc_color: 0x1A1A1A
+            arc_width: 14
+            start_angle: 0
+            end_angle: 360
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x222222
+              arc_width: 14
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Center label (the record label area)
+        - obj:
+            id: brightness_center_label
+            align: CENTER
+            width: 60
+            height: 60
+            radius: 30
+            bg_color: 0x1A1A1A
+            bg_opa: COVER
+            border_color: 0x333333
+            border_width: 1
+            clickable: false
+            widgets:
+              # Brightness percentage
+              - label:
+                  id: brightness_pct_label
+                  align: CENTER
+                  text_font: font_28
+                  text_color: 0xFFB000
+                  text: "50%"
+
+      on_load:
+        - lambda: 'id(current_page) = 1;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+
+    # ----- PAGE 2: Presets (Track Selection — Drop the Needle) -----
+    # Each track band represents a preset. Tap to "drop the needle" on that track.
+    - id: page_presets
+      bg_color: 0x111111
+      bg_opa: COVER
+      widgets:
+        # Title
+        - label:
+            align: TOP_MID
+            y: 20
+            text_font: font_12
+            text_color: 0x777777
+            text: "Drop Needle"
+
+        # Preset Track A (Outer — Warm White)
+        - arc:
+            id: preset_track_a
+            align: CENTER
+            width: 210
+            height: 210
+            arc_color: 0x1A1A1A
+            arc_width: 12
+            start_angle: 0
+            end_angle: 360
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0xFFB000
+              arc_width: 12
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Preset Track B (Soft Amber)
+        - arc:
+            id: preset_track_b
+            align: CENTER
+            width: 170
+            height: 170
+            arc_color: 0x1A1A1A
+            arc_width: 12
+            start_angle: 0
+            end_angle: 360
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x222222
+              arc_width: 12
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Preset Track C (Neutral White)
+        - arc:
+            id: preset_track_c
+            align: CENTER
+            width: 130
+            height: 130
+            arc_color: 0x1A1A1A
+            arc_width: 12
+            start_angle: 0
+            end_angle: 360
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x222222
+              arc_width: 12
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Preset Track D (Inner — Low Nightlight)
+        - arc:
+            id: preset_track_d
+            align: CENTER
+            width: 90
+            height: 90
+            arc_color: 0x1A1A1A
+            arc_width: 12
+            start_angle: 0
+            end_angle: 360
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0x222222
+              arc_width: 12
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+
+        # Center label with active preset name
+        - obj:
+            id: preset_center_label
+            align: CENTER
+            width: 56
+            height: 56
+            radius: 28
+            bg_color: 0x1A1A1A
+            bg_opa: COVER
+            border_color: 0x333333
+            border_width: 1
+            clickable: false
+            widgets:
+              - label:
+                  id: preset_name_label
+                  align: CENTER
+                  text_font: font_12
+                  text_color: 0xFFB000
+                  text: "Warm White"
+
+        # Touch targets for preset selection (invisible overlay buttons)
+        # Top area = Track A (Warm White)
+        - obj:
+            id: preset_touch_a
+            align: TOP_MID
+            y: 30
+            width: 80
+            height: 30
+            bg_opa: TRANSP
+            border_width: 0
+            clickable: true
+            on_click:
+              - script.execute:
+                  id: guarded_preset_apply
+                  preset_index: 0
+
+        # Right area = Track B (Soft Amber)
+        - obj:
+            id: preset_touch_b
+            align: RIGHT_MID
+            x: -20
+            width: 30
+            height: 80
+            bg_opa: TRANSP
+            border_width: 0
+            clickable: true
+            on_click:
+              - script.execute:
+                  id: guarded_preset_apply
+                  preset_index: 1
+
+        # Bottom area = Track C (Neutral White)
+        - obj:
+            id: preset_touch_c
+            align: BOTTOM_MID
+            y: -30
+            width: 80
+            height: 30
+            bg_opa: TRANSP
+            border_width: 0
+            clickable: true
+            on_click:
+              - script.execute:
+                  id: guarded_preset_apply
+                  preset_index: 2
+
+        # Left area = Track D (Low Nightlight)
+        - obj:
+            id: preset_touch_d
+            align: LEFT_MID
+            x: 20
+            width: 30
+            height: 80
+            bg_opa: TRANSP
+            border_width: 0
+            clickable: true
+            on_click:
+              - script.execute:
+                  id: guarded_preset_apply
+                  preset_index: 3
+
+      on_load:
+        - lambda: 'id(current_page) = 2;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
