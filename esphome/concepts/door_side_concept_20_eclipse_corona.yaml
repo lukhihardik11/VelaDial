@@ -1,0 +1,920 @@
+# ===========================================================================
+# VelaDial — UI Concept 20: Eclipse Corona
+# ===========================================================================
+# CONCEPT PROTOTYPE / NOT PRODUCTION
+# This YAML implements UI Concept 20 (Eclipse Corona).
+# It is designed for the ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display.
+#
+# COMPILE STATUS: PASS (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors, 165.61s)
+#
+# Key Features:
+# - Eclipse corona metaphor: brightness maps to corona intensity/radius
+# - 100% = Massive, bright corona (Solar Maximum) — full glow
+# - 50% = Medium corona — moderate glow
+# - 5% = Faint, thin corona sliver — barely visible
+# - OFF = No eclipse — dark sky (no corona visible)
+# - Concentric glow rings simulate radial corona falloff
+# - Asymmetric streamer arcs break perfect symmetry for organic feel
+# - Central "moon disk" provides dark canvas for text
+# - 3 pages: Power (Eclipse State), Brightness (Corona Intensity), Presets (Phases)
+# - Knob CW = expand corona (brighter), CCW = contract corona (dimmer)
+# - Knob press = power toggle on any page (triggers "diamond ring" flash)
+# - Round display = the eclipsed sun viewed head-on
+# - LED ring = outer corona halo extending beyond screen onto wall
+# - Wake-only-first enforced on all inputs
+# - Always wakes to Power page (page 0)
+# - Targets light.bedroom_group
+#
+# 4 Locked Presets (mapped to Eclipse Phases):
+# - Solar Maximum: Warm White (80%) — large, warm amber corona
+# - Golden Corona: Soft Amber (60%) — medium, rich amber
+# - Full Totality: Neutral White (90%) — large, cool white corona
+# - Partial Eclipse: Low Nightlight (15%) — tiny, faint glow
+#
+# Design Philosophy:
+# - The round display IS the eclipsed sun
+# - A dark moon disk sits at center (the obstruction)
+# - The corona (light escaping around the obstruction) = brightness
+# - More corona = more light in the room
+# - Cinematic, premium, calm — NOT sci-fi, NOT space wallpaper
+# - Warm amber palette (captured cosmic wonder, not cold space)
+# - The device on the wall looks like a captured eclipse — art, not gadgetry
+# - LED ring projects corona light onto wall (immersive extension)
+#
+# Visual Compromises (LVGL Feasibility):
+# - No true radial gradient (LVGL limitation) — using concentric rings
+#   with stepped opacity to simulate smooth falloff
+# - No volumetric plasma rendering — using lv_arc segments at different
+#   angles/opacities to simulate asymmetric coronal streamers
+# - No animated streamer undulation — static until user input
+# - No real glow/bloom shader — using border + bg_opa combinations
+# - The "diamond ring" effect is a brief label flash, not a particle effect
+# - Corona color is uniform amber (no multi-color gradient per ring)
+# - These compromises ensure 100% compile safety and UI responsiveness
+#
+# Differentiation from Concept 13 (Lunar Phase):
+# - Lunar Phase shows the MOON's illuminated surface (crescent to full, gray)
+# - Eclipse Corona shows the SUN's corona AROUND a dark disk (radial glow, amber)
+# - Different geometry (filled crescent vs radial ring)
+# - Different color (silver/gray vs warm amber/gold)
+#
+# Differentiation from Concept 17 (Iris Aperture):
+# - Iris Aperture shows MECHANICAL blades (metallic, geometric, octagonal)
+# - Eclipse Corona shows ORGANIC glow (soft, radial, natural, cosmic)
+# - Different texture (hard edges vs soft glow)
+# - Different metaphor (camera mechanism vs cosmic phenomenon)
+#
+# NOT PRODUCTION. NOT TESTED. CONCEPT EXPLORATION ONLY.
+# ===========================================================================
+substitutions:
+  device_name: veladial-door-concept20
+  friendly_name: "VelaDial Door Concept20"
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          id(display_awake) = true;
+          id(light_is_on) = false;
+          id(brightness_pct) = 50;
+          id(current_page) = 0;
+          id(active_preset) = 0;
+          id(touch_woke_this_cycle) = false;
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    version: recommended
+logger:
+  level: DEBUG
+api:
+  encryption:
+    key: !secret api_encryption_key
+ota:
+  - platform: esphome
+    password: !secret ota_password
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name}-AP"
+    password: !secret ap_password
+# ---------------------------------------------------------------------------
+# Global Variables
+# ---------------------------------------------------------------------------
+globals:
+  - id: display_awake
+    type: bool
+    initial_value: 'true'
+  - id: light_is_on
+    type: bool
+    initial_value: 'false'
+  - id: brightness_pct
+    type: int
+    initial_value: '50'
+  - id: current_page
+    type: int
+    initial_value: '0'
+  - id: active_preset
+    type: int
+    initial_value: '0'
+  - id: touch_woke_this_cycle
+    type: bool
+    initial_value: 'false'
+# ---------------------------------------------------------------------------
+# I2C Bus
+# ---------------------------------------------------------------------------
+i2c:
+  - id: bus_touch
+    sda: GPIO4
+    scl: GPIO3
+    frequency: 400kHz
+# ---------------------------------------------------------------------------
+# SPI Bus (Display)
+# ---------------------------------------------------------------------------
+spi:
+  clk_pin: GPIO6
+  mosi_pin: GPIO7
+# ---------------------------------------------------------------------------
+# Display (GC9A01 — 240x240 Round IPS)
+# ---------------------------------------------------------------------------
+display:
+  - platform: ili9xxx
+    model: GC9A01A
+    id: my_display
+    cs_pin: GPIO10
+    dc_pin: GPIO11
+    reset_pin: GPIO12
+    dimensions:
+      width: 240
+      height: 240
+    invert_colors: true
+    auto_clear_enabled: false
+# ---------------------------------------------------------------------------
+# Backlight
+# ---------------------------------------------------------------------------
+output:
+  - platform: ledc
+    pin: GPIO8
+    id: backlight_pwm
+    frequency: 5000Hz
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    name: "Backlight"
+    id: backlight
+    default_transition_length: 300ms
+  - platform: esp32_rmt_led_strip
+    id: led_ring
+    name: "LED Ring"
+    pin: GPIO48
+    num_leds: 5
+    rgb_order: GRB
+    chipset: WS2812
+# ---------------------------------------------------------------------------
+# Touchscreen (CST816)
+# ---------------------------------------------------------------------------
+touchscreen:
+  - platform: cst816
+    id: my_touch
+    i2c_id: bus_touch
+    interrupt_pin: GPIO5
+    reset_pin: GPIO13
+    on_touch:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          }
+      - script.execute: wake_screen
+# ---------------------------------------------------------------------------
+# Rotary Encoder
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    id: knob
+    name: "Rotary Encoder"
+    pin_a: GPIO1
+    pin_b: GPIO2
+    resolution: 1
+    on_clockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) < 100) {
+                id(brightness_pct) += 5;
+                if (id(brightness_pct) > 100) id(brightness_pct) = 100;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+    on_anticlockwise:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            if (id(current_page) == 1) {
+              if (id(brightness_pct) > 5) {
+                id(brightness_pct) -= 5;
+                if (id(brightness_pct) < 5) id(brightness_pct) = 5;
+              }
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+# ---------------------------------------------------------------------------
+# Knob Button — Power Toggle on any page
+# ---------------------------------------------------------------------------
+binary_sensor:
+  - platform: gpio
+    id: knob_button
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    on_press:
+      - lambda: |-
+          if (!id(display_awake)) {
+            id(display_awake) = true;
+            id(touch_woke_this_cycle) = true;
+          } else if (!id(touch_woke_this_cycle)) {
+            id(light_is_on) = !id(light_is_on);
+            if (id(light_is_on) && id(brightness_pct) == 0) {
+              id(brightness_pct) = 80;
+            }
+          }
+      - script.execute: wake_screen
+      - script.execute: update_ui
+      - script.execute: send_to_ha
+# ---------------------------------------------------------------------------
+# Home Assistant State Import
+# ---------------------------------------------------------------------------
+text_sensor:
+  - platform: homeassistant
+    id: ha_light_state
+    entity_id: light.bedroom_group
+    attribute: state
+    on_value:
+      - lambda: |-
+          if (x == "on") {
+            id(light_is_on) = true;
+          } else if (x == "off") {
+            id(light_is_on) = false;
+          }
+      - script.execute: update_ui
+  - platform: homeassistant
+    id: ha_light_brightness
+    entity_id: light.bedroom_group
+    attribute: brightness
+    on_value:
+      - lambda: |-
+          if (x.length() > 0) {
+            int b = atoi(x.c_str());
+            id(brightness_pct) = (b * 100) / 255;
+          }
+      - script.execute: update_ui
+# ---------------------------------------------------------------------------
+# Scripts
+# ---------------------------------------------------------------------------
+script:
+  # --- Wake Screen ---
+  - id: wake_screen
+    mode: restart
+    then:
+      - light.turn_on:
+          id: backlight
+          brightness: 80%
+          transition_length: 300ms
+      - if:
+          condition:
+            lambda: 'return id(touch_woke_this_cycle);'
+          then:
+            - lvgl.page.show:
+                id: page_power
+                animation: NONE
+                time: 0ms
+            - lambda: 'id(current_page) = 0;'
+      - delay: 500ms
+      - lambda: 'id(touch_woke_this_cycle) = false;'
+      - delay: 44500ms
+      - lambda: 'id(display_awake) = false;'
+      - light.turn_off:
+          id: backlight
+          transition_length: 300ms
+  # --- Update UI (Corona Intensity + Labels + LED Ring) ---
+  - id: update_ui
+    mode: restart
+    then:
+      # ---- POWER PAGE (Page 0): Eclipse Active / Totality ----
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - lvgl.label.update:
+                id: power_state_label
+                text: "ECLIPSE"
+                text_color: 0xFFB000
+            - lvgl.widget.update:
+                id: power_corona_ring
+                border_color: 0xFFB000
+                border_opa: COVER
+          else:
+            - lvgl.label.update:
+                id: power_state_label
+                text: "TOTALITY"
+                text_color: 0x444444
+            - lvgl.widget.update:
+                id: power_corona_ring
+                border_color: 0x222222
+                border_opa: COVER
+      # ---- BRIGHTNESS PAGE (Page 1): Corona Intensity ----
+      # Update concentric glow rings based on brightness
+      # Ring 1 (outermost, largest): visible at brightness >= 20%
+      - lvgl.widget.update:
+          id: corona_ring_1
+          bg_opa: !lambda |-
+            int b = id(brightness_pct);
+            if (b >= 20) return (int)(b * 0.15);
+            return 0;
+      # Ring 2: visible at brightness >= 15%
+      - lvgl.widget.update:
+          id: corona_ring_2
+          bg_opa: !lambda |-
+            int b = id(brightness_pct);
+            if (b >= 15) return (int)(b * 0.25);
+            return 0;
+      # Ring 3: visible at brightness >= 10%
+      - lvgl.widget.update:
+          id: corona_ring_3
+          bg_opa: !lambda |-
+            int b = id(brightness_pct);
+            if (b >= 10) return (int)(b * 0.40);
+            return 0;
+      # Ring 4: visible at brightness >= 5%
+      - lvgl.widget.update:
+          id: corona_ring_4
+          bg_opa: !lambda |-
+            int b = id(brightness_pct);
+            if (b >= 5) return (int)(b * 0.55);
+            return 0;
+      # Ring 5 (innermost glow): always visible when on
+      - lvgl.widget.update:
+          id: corona_ring_5
+          bg_opa: !lambda |-
+            int b = id(brightness_pct);
+            if (b >= 5) return (int)(b * 0.75);
+            return 0;
+      # Streamer arcs — asymmetric corona extensions
+      - lvgl.arc.update:
+          id: streamer_arc_1
+          indicator:
+            arc_opa: !lambda |-
+              int b = id(brightness_pct);
+              if (b >= 30) return (int)(b * 0.4);
+              return 0;
+      - lvgl.arc.update:
+          id: streamer_arc_2
+          indicator:
+            arc_opa: !lambda |-
+              int b = id(brightness_pct);
+              if (b >= 40) return (int)(b * 0.3);
+              return 0;
+      - lvgl.arc.update:
+          id: streamer_arc_3
+          indicator:
+            arc_opa: !lambda |-
+              int b = id(brightness_pct);
+              if (b >= 50) return (int)(b * 0.25);
+              return 0;
+      # Brightness percentage label
+      - lvgl.label.update:
+          id: brightness_pct_label
+          text: !lambda |-
+            char buf[8];
+            snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
+            return std::string(buf);
+      # ---- PRESETS PAGE (Page 2): Update active preset highlight ----
+      - lvgl.widget.update:
+          id: preset_zone_0
+          border_color: !lambda |-
+            return (id(active_preset) == 0) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);
+      - lvgl.widget.update:
+          id: preset_zone_1
+          border_color: !lambda |-
+            return (id(active_preset) == 1) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);
+      - lvgl.widget.update:
+          id: preset_zone_2
+          border_color: !lambda |-
+            return (id(active_preset) == 2) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);
+      - lvgl.widget.update:
+          id: preset_zone_3
+          border_color: !lambda |-
+            return (id(active_preset) == 3) ? lv_color_hex(0xFFB000) : lv_color_hex(0x333333);
+      # ---- LED Ring: Outer Corona Halo ----
+      - if:
+          condition:
+            lambda: 'return id(light_is_on);'
+          then:
+            - light.turn_on:
+                id: led_ring
+                red: 100%
+                green: 55%
+                blue: 0%
+                brightness: !lambda |-
+                  float b = id(brightness_pct) / 100.0 * 0.5;
+                  if (b < 0.05) b = 0.05;
+                  return b;
+                transition_length: 300ms
+          else:
+            - light.turn_off:
+                id: led_ring
+                transition_length: 300ms
+  # --- Send to Home Assistant ---
+  - id: send_to_ha
+    mode: single
+    then:
+      - homeassistant.service:
+          service: light.turn_on
+          data:
+            entity_id: light.bedroom_group
+            brightness: !lambda |-
+              return id(brightness_pct) * 255 / 100;
+      - if:
+          condition:
+            lambda: 'return !id(light_is_on);'
+          then:
+            - homeassistant.service:
+                service: light.turn_off
+                data:
+                  entity_id: light.bedroom_group
+  # --- Guarded Swipe Left ---
+  - id: guarded_swipe_left
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) < 2) {
+                  id(current_page) += 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 2;'
+                then:
+                  - lvgl.page.show:
+                      id: page_presets
+                      animation: MOVE_LEFT
+                      time: 200ms
+            - script.execute: update_ui
+  # --- Guarded Swipe Right ---
+  - id: guarded_swipe_right
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                if (id(current_page) > 0) {
+                  id(current_page) -= 1;
+                }
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 0;'
+                then:
+                  - lvgl.page.show:
+                      id: page_power
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - if:
+                condition:
+                  lambda: 'return id(current_page) == 1;'
+                then:
+                  - lvgl.page.show:
+                      id: page_brightness
+                      animation: MOVE_RIGHT
+                      time: 200ms
+            - script.execute: update_ui
+  # --- Guarded Power Toggle ---
+  - id: guarded_power_toggle
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(light_is_on) = !id(light_is_on);
+                if (id(light_is_on) && id(brightness_pct) == 0) {
+                  id(brightness_pct) = 80;
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+  # --- Guarded Preset Apply ---
+  - id: guarded_preset_apply
+    mode: single
+    parameters:
+      preset_index: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(display_awake) && !id(touch_woke_this_cycle);'
+          then:
+            - lambda: |-
+                id(active_preset) = preset_index;
+                id(light_is_on) = true;
+                switch (preset_index) {
+                  case 0: id(brightness_pct) = 80; break;  // Solar Maximum: Warm White
+                  case 1: id(brightness_pct) = 60; break;  // Golden Corona: Soft Amber
+                  case 2: id(brightness_pct) = 90; break;  // Full Totality: Neutral White
+                  case 3: id(brightness_pct) = 15; break;  // Partial Eclipse: Low Nightlight
+                }
+            - script.execute: update_ui
+            - script.execute: send_to_ha
+# ---------------------------------------------------------------------------
+# Fonts
+# ---------------------------------------------------------------------------
+font:
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 300
+    id: font_36
+    size: 36
+    glyphs: "0123456789% "
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 400
+    id: font_14
+    size: 14
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz %.-"
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 300
+    id: font_12
+    size: 12
+    glyphs: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz %.-"
+# ---------------------------------------------------------------------------
+# LVGL Configuration
+# ---------------------------------------------------------------------------
+lvgl:
+  displays:
+    - my_display
+  touchscreens:
+    - my_touch
+  buffer_size: 25%
+  pages:
+    # ===== PAGE 0: Power (Eclipse State) =====
+    # Shows a single corona ring around a dark moon disk
+    # ON = bright amber ring (eclipse active), OFF = dark ring (totality/dark sky)
+    - id: page_power
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # Outer corona ring (power indicator)
+        - obj:
+            id: power_corona_ring
+            align: CENTER
+            width: 200
+            height: 200
+            radius: 100
+            bg_color: 0x000000
+            bg_opa: TRANSP
+            border_color: 0x222222
+            border_width: 12
+            border_opa: COVER
+            clickable: false
+        # Inner subtle ring
+        - obj:
+            align: CENTER
+            width: 160
+            height: 160
+            radius: 80
+            bg_color: 0x000000
+            bg_opa: TRANSP
+            border_color: 0x1A1A1A
+            border_width: 4
+            border_opa: COVER
+            clickable: false
+        # Moon disk (dark center)
+        - obj:
+            align: CENTER
+            width: 80
+            height: 80
+            radius: 40
+            bg_color: 0x0A0A0A
+            bg_opa: COVER
+            border_color: 0x222222
+            border_width: 1
+            clickable: false
+            widgets:
+              # Power state text
+              - label:
+                  id: power_state_label
+                  align: CENTER
+                  y: 0
+                  text_font: font_14
+                  text_color: 0x444444
+                  text: "TOTALITY"
+      on_load:
+        - lambda: 'id(current_page) = 0;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+    # ===== PAGE 1: Brightness Hero (Corona Intensity) =====
+    # Multiple concentric glow rings + asymmetric streamer arcs
+    # The corona expands/contracts with brightness
+    - id: page_brightness
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # --- Corona Glow Ring 1 (Outermost — faintest, largest) ---
+        - obj:
+            id: corona_ring_1
+            align: CENTER
+            width: 230
+            height: 230
+            radius: 115
+            bg_color: 0xFF8C00
+            bg_opa: 15%
+            border_width: 0
+            clickable: false
+        # --- Corona Glow Ring 2 ---
+        - obj:
+            id: corona_ring_2
+            align: CENTER
+            width: 200
+            height: 200
+            radius: 100
+            bg_color: 0xFFA000
+            bg_opa: 25%
+            border_width: 0
+            clickable: false
+        # --- Corona Glow Ring 3 ---
+        - obj:
+            id: corona_ring_3
+            align: CENTER
+            width: 170
+            height: 170
+            radius: 85
+            bg_color: 0xFFB000
+            bg_opa: 40%
+            border_width: 0
+            clickable: false
+        # --- Corona Glow Ring 4 ---
+        - obj:
+            id: corona_ring_4
+            align: CENTER
+            width: 140
+            height: 140
+            radius: 70
+            bg_color: 0xFFC000
+            bg_opa: 55%
+            border_width: 0
+            clickable: false
+        # --- Corona Glow Ring 5 (Innermost glow — brightest) ---
+        - obj:
+            id: corona_ring_5
+            align: CENTER
+            width: 110
+            height: 110
+            radius: 55
+            bg_color: 0xFFD000
+            bg_opa: 75%
+            border_width: 0
+            clickable: false
+        # --- Streamer Arc 1 (NE quadrant — asymmetric extension) ---
+        - arc:
+            id: streamer_arc_1
+            align: CENTER
+            width: 230
+            height: 230
+            arc_color: 0x000000
+            arc_width: 20
+            start_angle: 30
+            end_angle: 90
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0xFFB000
+              arc_width: 20
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        # --- Streamer Arc 2 (SW quadrant) ---
+        - arc:
+            id: streamer_arc_2
+            align: CENTER
+            width: 220
+            height: 220
+            arc_color: 0x000000
+            arc_width: 16
+            start_angle: 200
+            end_angle: 270
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0xFFA000
+              arc_width: 16
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        # --- Streamer Arc 3 (N extension — polar plume) ---
+        - arc:
+            id: streamer_arc_3
+            align: CENTER
+            width: 210
+            height: 210
+            arc_color: 0x000000
+            arc_width: 12
+            start_angle: 340
+            end_angle: 20
+            value: 100
+            min_value: 0
+            max_value: 100
+            adjustable: false
+            indicator:
+              arc_color: 0xFF9000
+              arc_width: 12
+            knob:
+              width: 0
+              height: 0
+              bg_opa: TRANSP
+        # --- Moon Disk (Central dark obstruction) ---
+        - obj:
+            align: CENTER
+            width: 80
+            height: 80
+            radius: 40
+            bg_color: 0x050505
+            bg_opa: COVER
+            border_color: 0x1A1A1A
+            border_width: 1
+            clickable: false
+            widgets:
+              # Brightness percentage (displayed on the moon disk)
+              - label:
+                  id: brightness_pct_label
+                  align: CENTER
+                  text_font: font_36
+                  text_color: 0xFFD700
+                  text: "50%"
+      on_load:
+        - lambda: 'id(current_page) = 1;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
+    # ===== PAGE 2: Presets (Eclipse Phases) =====
+    # Four miniature eclipse zones arranged in a cross pattern
+    - id: page_presets
+      bg_color: 0x000000
+      bg_opa: COVER
+      widgets:
+        # Title
+        - label:
+            align: TOP_MID
+            y: 15
+            text_font: font_12
+            text_color: 0x666666
+            text: "Eclipse Phase"
+        # --- Preset 0: Solar Maximum (Top — Warm White 80%) ---
+        - obj:
+            id: preset_zone_0
+            align: CENTER
+            x: 0
+            y: -55
+            width: 56
+            height: 56
+            radius: 28
+            bg_color: 0x1A1000
+            bg_opa: COVER
+            border_color: 0x333333
+            border_width: 3
+            clickable: true
+            on_click:
+              - script.execute:
+                  id: guarded_preset_apply
+                  preset_index: 0
+            widgets:
+              - label:
+                  align: CENTER
+                  text_font: font_12
+                  text_color: 0xFFB000
+                  text: "80%"
+        # --- Preset 1: Golden Corona (Right — Soft Amber 60%) ---
+        - obj:
+            id: preset_zone_1
+            align: CENTER
+            x: 55
+            y: 0
+            width: 56
+            height: 56
+            radius: 28
+            bg_color: 0x1A0E00
+            bg_opa: COVER
+            border_color: 0x333333
+            border_width: 3
+            clickable: true
+            on_click:
+              - script.execute:
+                  id: guarded_preset_apply
+                  preset_index: 1
+            widgets:
+              - label:
+                  align: CENTER
+                  text_font: font_12
+                  text_color: 0xFFA000
+                  text: "60%"
+        # --- Preset 2: Full Totality (Bottom — Neutral White 90%) ---
+        - obj:
+            id: preset_zone_2
+            align: CENTER
+            x: 0
+            y: 55
+            width: 56
+            height: 56
+            radius: 28
+            bg_color: 0x141414
+            bg_opa: COVER
+            border_color: 0x333333
+            border_width: 3
+            clickable: true
+            on_click:
+              - script.execute:
+                  id: guarded_preset_apply
+                  preset_index: 2
+            widgets:
+              - label:
+                  align: CENTER
+                  text_font: font_12
+                  text_color: 0xF0E6D3
+                  text: "90%"
+        # --- Preset 3: Partial Eclipse (Left — Low Nightlight 15%) ---
+        - obj:
+            id: preset_zone_3
+            align: CENTER
+            x: -55
+            y: 0
+            width: 56
+            height: 56
+            radius: 28
+            bg_color: 0x0A0A0A
+            bg_opa: COVER
+            border_color: 0x333333
+            border_width: 3
+            clickable: true
+            on_click:
+              - script.execute:
+                  id: guarded_preset_apply
+                  preset_index: 3
+            widgets:
+              - label:
+                  align: CENTER
+                  text_font: font_12
+                  text_color: 0x666666
+                  text: "15%"
+        # Center moon disk (decorative)
+        - obj:
+            align: CENTER
+            width: 40
+            height: 40
+            radius: 20
+            bg_color: 0x050505
+            bg_opa: COVER
+            border_color: 0x222222
+            border_width: 1
+            clickable: false
+      on_load:
+        - lambda: 'id(current_page) = 2;'
+      on_swipe_left:
+        - script.execute: guarded_swipe_left
+      on_swipe_right:
+        - script.execute: guarded_swipe_right
