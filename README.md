@@ -9,7 +9,7 @@ VelaDial controls a group of Tuya RGB bulbs without relying on voice commands, c
 - Door-side ELECROW 1.28 in rotary touch display for power, brightness, and color presets.
 - Bedside ESP32-C6 with APDS-9960 gesture sensor for silent hand-wave control.
 - Home Assistant as the local hub.
-- LocalTuya or an equivalent local LAN integration for the existing Tuya bulbs.
+- Surplife integration (or any HA-supported light) grouped into `light.bedroom_group`.
 
 ### Sensor expansion
 
@@ -70,18 +70,23 @@ For human review, read in this order:
 9. `esphome/`
 10. `hardware/`
 
+## Setup & Validation Guides
+
+- **[Single-Source Test Guide](docs/setup/single_source_test_guide.md)** (Start Here)
+- [Raspberry Pi & Home Assistant Setup](docs/setup/raspberry_pi_home_assistant_setup.md) (Legacy)
+- [Full E2E Setup & Validation Guide](docs/setup/full_e2e_setup_and_validation_guide.md) (Legacy)
+
 ## Current firmware status
 
-- `esphome/door_side_rotary.yaml` — **Compile-passing multi-theme firmware candidate** with 20 selectable UI themes. Compile PASSED (ESPHome 2026.5.0, ESP-IDF 5.5.4, 0 errors). RAM: 17.5%, Flash: 65.5%. Hardware validation pending. Not physically validated. Further visual refinement may follow hardware testing.
+- `esphome/door_side_rotary.yaml` — **DISPLAY WORKING** (PR #61). Touch, knob, and HA control validation pending.
 - `esphome/bedside_gesture.yaml` — ESP32-C6 + APDS-9960 gesture controller. Hardware validation NOT YET TESTED.
 
 The next major work items are hardware validation:
 
-1. Validate the ELECROW board revision and pinout against the actual hardware.
+1. Validate touch, knob, and HA control on the door-side display.
 2. Verify I2C scans on both nodes (door-side: `0x29`, `0x44`; bedside: `0x39`, `0x29`).
-3. Flash the door-side firmware candidate and verify all 20 themes render correctly on the physical display.
-4. Verify the VL53L4CD ESPHome support path before writing hold-nightlight firmware. If blocked, surface the decision to the owner before any fallback.
-5. Bedside bring-up: APDS-9960 standalone first; VL53L4CD support verification second. **Do not implement sensor fusion in v1.**
+3. Verify the VL53L4CD ESPHome support path before writing hold-nightlight firmware. If blocked, surface the decision to the owner before any fallback.
+4. Bedside bring-up: APDS-9960 standalone first; VL53L4CD support verification second. **Do not implement sensor fusion in v1.**
 
 v1 bedside behavior is APDS-9960 standalone left/right gestures plus VL53L4CD standalone hand-hold nightlight (only if VL53L4CD support is verified). VL53L4CD/APDS-9960 sensor fusion is v2 / future only — not a first-build requirement.
 

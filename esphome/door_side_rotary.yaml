@@ -127,10 +127,9 @@ psram:
 # ---------------------------------------------------------------------------
 i2c:
   - id: i2c_touch
-    setup_priority: 400
     sda: GPIO6
     scl: GPIO7
-    scan: false
+    scan: true
     frequency: 400kHz
 
   - id: i2c_sensors
@@ -201,11 +200,15 @@ touchscreen:
   interrupt_pin: GPIO5
   reset_pin: GPIO13
   i2c_id: i2c_touch
+  skip_probe: true
   transform:
     mirror_x: false
     mirror_y: true
     swap_xy: true
   on_touch:
+    - logger.log:
+        format: "TOUCH: x=%d, y=%d"
+        args: ['touch.x', 'touch.y']
     - script.execute: wake_screen_from_touch
 
 # ---------------------------------------------------------------------------
@@ -571,14 +574,14 @@ lvgl:
             text_color: 0x666666
             text: ""
 
-        # Theme name indicator (subtle, bottom)
+        # Theme name indicator — VISIBLE (shows T## + short name)
         - label:
             id: pw_theme_name
             align: BOTTOM_MID
             y: -30
             text_font: roboto16
-            text_color: 0x333333
-            text: "Minimal"
+            text_color: 0x888888
+            text: "T01 Minimal"
 
       on_swipe_left:
         - script.execute: guarded_swipe_left
@@ -811,45 +814,13 @@ lvgl:
         - script.execute: guarded_swipe_right
 
     # -------------------------------------------------------------------
-    # PAGE 3: Theme Selector
+    # PAGE 3: Theme Selector — FULL-SCREEN PREVIEW
     # -------------------------------------------------------------------
     - id: theme_selector_page
       bg_color: 0x0A0A0A
       bg_opa: COVER
       widgets:
-        - label:
-            id: ts_header
-            align: TOP_MID
-            y: 30
-            text_font: roboto16
-            text_color: 0x666666
-            text: "THEME SELECTOR"
-
-        - label:
-            id: ts_index
-            align: CENTER
-            y: -40
-            text_font: roboto24
-            text_color: 0xFFB300
-            text: "1 / 20"
-
-        - label:
-            id: ts_name
-            align: CENTER
-            y: 0
-            text_font: roboto24
-            text_color: 0xFFFFFF
-            text: "Minimal Thermostat"
-
-        - label:
-            id: ts_instruction
-            align: CENTER
-            y: 60
-            text_font: roboto16
-            text_color: 0x555555
-            text: "Press to apply"
-
-        # Decorative ring
+        # Large outer preview ring — changes color per theme
         - arc:
             id: ts_ring
             align: CENTER
@@ -858,14 +829,61 @@ lvgl:
             start_angle: 0
             end_angle: 360
             min_value: 0
-            max_value: 20
-            value: 1
+            max_value: 100
+            value: 100
             indicator:
-              bg_color: 0xFFB300
-              width: 4
+              bg_color: 0x4FC3F7
+              width: 6
             bg_opa: TRANSP
             border_width: 0
             clickable: false
+
+        # Large center preview circle — filled with theme primary color
+        - obj:
+            id: ts_preview_circle
+            align: CENTER
+            width: 120
+            height: 120
+            radius: 60
+            bg_color: 0x4FC3F7
+            bg_opa: COVER
+            border_width: 0
+
+        # "THEME" header
+        - label:
+            id: ts_header
+            align: TOP_MID
+            y: 22
+            text_font: roboto16
+            text_color: 0x888888
+            text: "THEME"
+
+        # Theme index: "01/20"
+        - label:
+            id: ts_index
+            align: CENTER
+            y: -15
+            text_font: roboto32
+            text_color: 0xFFFFFF
+            text: "01/20"
+
+        # Theme name (inside preview circle)
+        - label:
+            id: ts_name
+            align: CENTER
+            y: 20
+            text_font: roboto16
+            text_color: 0x000000
+            text: "Minimal"
+
+        # Instruction at bottom
+        - label:
+            id: ts_instruction
+            align: BOTTOM_MID
+            y: -22
+            text_font: roboto16
+            text_color: 0x666666
+            text: "Rotate = Browse | Press = Apply"
 
   # LVGL idle handling — guarded by boot_guard_active
   on_idle:
@@ -1015,40 +1033,66 @@ script:
           id: ts_index
           text: !lambda |-
             static char buf[12];
-            snprintf(buf, sizeof(buf), "%d / 20", id(theme_preview_index) + 1);
+            snprintf(buf, sizeof(buf), "%02d/20", id(theme_preview_index) + 1);
             return buf;
       - lvgl.label.update:
           id: ts_name
           text: !lambda |-
             static const char* names[] = {
-              "Minimal Thermostat",
-              "SmartKnob Arc",
-              "Large Center Power",
-              "Single-Page Simple",
-              "Preset Ring",
-              "Night Mode Ultra-Min",
-              "Text-First Utility",
-              "Apple Watch Complic.",
-              "LED-Ring Status",
-              "Three-Screen Carousel",
-              "Brightness-First",
-              "Door Switch Replace",
-              "Lunar Phase",
-              "Sundial Shadow",
-              "Tree Ring Growth",
-              "Topographic Contour",
-              "Iris Aperture",
-              "Radar Sweep",
-              "Vinyl DJ Crossfader",
-              "Eclipse Corona"
+              "Minimal", "SmartKnob", "Power",
+              "Simple", "Ring", "Night",
+              "Text", "Watch", "LED",
+              "Carousel", "Bright", "Switch",
+              "Lunar", "Sundial", "Tree",
+              "Topo", "Iris", "Radar",
+              "Vinyl", "Eclipse"
             };
             int idx = id(theme_preview_index);
             if (idx < 0) idx = 0;
             if (idx > 19) idx = 19;
             return names[idx];
-      - lvgl.arc.update:
+      # Update preview circle color to theme primary
+      - lvgl.widget.update:
+          id: ts_preview_circle
+          bg_color: !lambda |-
+            static const uint32_t colors[] = {
+              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
+              0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
+              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
+              0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
+            };
+            int idx = id(theme_preview_index);
+            if (idx < 0) idx = 0; if (idx > 19) idx = 19;
+            return lv_color_hex(colors[idx]);
+      # Update outer ring color to theme primary
+      - lvgl.widget.update:
           id: ts_ring
-          value: !lambda 'return id(theme_preview_index) + 1;'
+          arc_color: !lambda |-
+            static const uint32_t colors[] = {
+              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
+              0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
+              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
+              0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
+            };
+            int idx = id(theme_preview_index);
+            if (idx < 0) idx = 0; if (idx > 19) idx = 19;
+            return lv_color_hex(colors[idx]);
+      - logger.log:
+          format: "Theme selector preview: %d - %s"
+          args:
+            - 'id(theme_preview_index)'
+            - |-
+              [&]() -> const char* {
+                static const char* names[] = {
+                  "Minimal", "SmartKnob", "Power", "Simple", "Ring",
+                  "Night", "Text", "Watch", "LED", "Carousel",
+                  "Bright", "Switch", "Lunar", "Sundial", "Tree",
+                  "Topo", "Iris", "Radar", "Vinyl", "Eclipse"
+                };
+                int idx = id(theme_preview_index);
+                if (idx < 0) idx = 0; if (idx > 19) idx = 19;
+                return names[idx];
+              }()
 
   - id: apply_theme_from_selector
     mode: single
@@ -1057,6 +1101,20 @@ script:
           id(active_theme) = id(theme_preview_index);
           id(theme_selector_active) = false;
           id(current_page) = 0;
+      # Show "APPLIED" confirmation on theme selector page briefly
+      - lvgl.label.update:
+          id: ts_header
+          text: "APPLIED"
+          text_color: 0x4CAF50
+      - lvgl.label.update:
+          id: ts_instruction
+          text: !lambda |-
+            static char buf[32];
+            snprintf(buf, sizeof(buf), "%02d/20 Applied!", id(active_theme) + 1);
+            return buf;
+          text_color: 0x4CAF50
+      - delay: 800ms
+      # Now transition to power page
       - lvgl.page.show:
           id: power_page
           animation: MOVE_RIGHT
@@ -1243,10 +1301,17 @@ script:
   - id: handle_knob_press
     mode: single
     then:
+      - logger.log:
+          format: "SHORT PRESS detected: awake=%d, theme_sel=%d, page=%d"
+          args:
+            - 'id(display_awake)'
+            - 'id(theme_selector_active)'
+            - 'id(current_page)'
       - if:
           condition:
             lambda: 'return !id(display_awake);'
           then:
+            - logger.log: "SHORT PRESS: waking screen"
             - script.execute: wake_screen_from_knob
           else:
             - script.execute: screen_idle_timer
@@ -1255,11 +1320,13 @@ script:
                   lambda: 'return id(theme_selector_active);'
                 then:
                   # In theme selector: apply selected theme
+                  - logger.log: "SHORT PRESS: applying theme from selector"
                   - script.execute: apply_theme_from_selector
             - if:
                 condition:
                   lambda: 'return !id(theme_selector_active) && id(current_page) == 0;'
                 then:
+                  - logger.log: "SHORT PRESS: power toggle on page 0"
                   - script.execute: handle_power_toggle
             - if:
                 condition:
@@ -1285,6 +1352,21 @@ script:
   - id: handle_power_toggle
     mode: single
     then:
+      - logger.log:
+          format: "POWER TOGGLE: calling light.toggle on %s (lights_on=%d, api=%d)"
+          args:
+            - '"${light_group}"'
+            - 'id(lights_on)'
+            - 'id(api_connected).state'
+      - if:
+          condition:
+            binary_sensor.is_off: api_connected
+          then:
+            - logger.log: "POWER TOGGLE: HA API NOT connected — toggle will fail!"
+            - lvgl.label.update:
+                id: power_status_label
+                text: "No HA"
+                text_color: 0xFF4444
       - homeassistant.action:
           action: light.toggle
           data:
@@ -1458,7 +1540,7 @@ script:
             if (t < 0) t = 0; if (t > 19) t = 19;
             return lv_color_hex(colors[t]);
 
-      # Update theme name on power page
+      # Update theme name on power page (T## + short name, visible color)
       - lvgl.label.update:
           id: pw_theme_name
           text: !lambda |-
@@ -1468,9 +1550,21 @@ script:
               "Bright", "Switch", "Lunar", "Sundial", "Tree",
               "Topo", "Iris", "Radar", "Vinyl", "Eclipse"
             };
+            static char buf[24];
             int t = id(active_theme);
             if (t < 0) t = 0; if (t > 19) t = 19;
-            return names[t];
+            snprintf(buf, sizeof(buf), "T%02d %s", t + 1, names[t]);
+            return buf;
+          text_color: !lambda |-
+            static const uint32_t colors[] = {
+              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
+              0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
+              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
+              0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return lv_color_hex(colors[t]);
 
       # Update preset button labels per theme
       - lvgl.label.update:
