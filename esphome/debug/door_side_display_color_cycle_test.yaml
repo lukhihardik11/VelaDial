@@ -1,0 +1,186 @@
+# ===========================================================================
+# VelaDial Debug — Color Cycle Test
+# ===========================================================================
+# PURPOSE: Verify SPI display communication works after GPIO power is confirmed.
+# Uses minimal GC9A01A display config with display lambda (no LVGL).
+# Cycles through full-screen colors every 3 seconds.
+#
+# PREREQUISITES: GPIO power test must show backlight lighting up first.
+#
+# WHAT TO LOOK FOR:
+#   1. Screen shows solid WHITE for 3s
+#   2. Screen shows solid RED for 3s
+#   3. Screen shows solid GREEN for 3s
+#   4. Screen shows solid BLUE for 3s
+#   5. Screen shows BLACK background with "VELADIAL" text in white
+#   6. Cycle repeats
+#
+# If backlight is on but screen stays black/white with no color changes:
+#   → SPI communication issue (wrong pins, wrong data_rate, wrong mode)
+#
+# FLASH: esphome run esphome/debug/door_side_display_color_cycle_test.yaml
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Substitutions
+# ---------------------------------------------------------------------------
+substitutions:
+  device_name: veladial-color-test
+  friendly_name: VelaDial Color Test
+
+# ---------------------------------------------------------------------------
+# ESPHome core — EXACT match to official Elecrow Lesson02
+# ---------------------------------------------------------------------------
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.esp-idf.memory_type: qio_opi
+    board_build.flash_mode: dio
+  on_boot:
+    priority: 800
+    then:
+      # === OFFICIAL ELECROW BOOT ORDER ===
+      - logger.log: "BOOT: Backlight ON (GPIO46)"
+      - output.turn_on: gpio_backlight_pwm
+      - delay: 200ms
+      - output.turn_off: power_light
+      - output.turn_on: screen_power
+      - output.turn_on: peripheral_power
+      - logger.log: "BOOT: All power GPIOs enabled, display should be visible"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+    version: recommended
+
+# ---------------------------------------------------------------------------
+# PSRAM
+# ---------------------------------------------------------------------------
+psram:
+  mode: octal
+  speed: 80MHz
+
+# ---------------------------------------------------------------------------
+# Logging / API / OTA / Wi-Fi
+# ---------------------------------------------------------------------------
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Setup"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+# ---------------------------------------------------------------------------
+# Outputs — Power GPIOs + Backlight
+# ---------------------------------------------------------------------------
+output:
+  - platform: ledc
+    pin: GPIO46
+    id: gpio_backlight_pwm
+
+  - platform: gpio
+    id: power_light
+    pin: GPIO40
+
+  - platform: gpio
+    id: screen_power
+    pin: GPIO1
+
+  - platform: gpio
+    id: peripheral_power
+    pin: GPIO2
+
+# ---------------------------------------------------------------------------
+# Light — Backlight
+# ---------------------------------------------------------------------------
+light:
+  - platform: monochromatic
+    id: back_light
+    name: "Backlight"
+    output: gpio_backlight_pwm
+    restore_mode: ALWAYS_ON
+
+# ---------------------------------------------------------------------------
+# SPI — EXACT match to official (no data_rate specified = ESPHome default)
+# ---------------------------------------------------------------------------
+spi:
+  id: spi_bus
+  mosi_pin: 11
+  clk_pin: 10
+
+# ---------------------------------------------------------------------------
+# Display — GC9A01A with display lambda (NO LVGL)
+# ---------------------------------------------------------------------------
+display:
+  - platform: ili9xxx
+    id: round_display
+    model: GC9A01A
+    cs_pin: GPIO9
+    dc_pin: GPIO3
+    reset_pin: GPIO14
+    invert_colors: true
+    rotation: 0
+    update_interval: 3s
+    lambda: |-
+      // Color cycle: cycles through 5 states
+      static int state = 0;
+      int w = it.get_width();
+      int h = it.get_height();
+
+      switch (state) {
+        case 0:
+          // Full white
+          it.filled_rectangle(0, 0, w, h, Color(255, 255, 255));
+          ESP_LOGI("color_test", "Showing: WHITE");
+          break;
+        case 1:
+          // Full red
+          it.filled_rectangle(0, 0, w, h, Color(255, 0, 0));
+          ESP_LOGI("color_test", "Showing: RED");
+          break;
+        case 2:
+          // Full green
+          it.filled_rectangle(0, 0, w, h, Color(0, 255, 0));
+          ESP_LOGI("color_test", "Showing: GREEN");
+          break;
+        case 3:
+          // Full blue
+          it.filled_rectangle(0, 0, w, h, Color(0, 0, 255));
+          ESP_LOGI("color_test", "Showing: BLUE");
+          break;
+        case 4:
+          // Black with VELADIAL text
+          it.filled_rectangle(0, 0, w, h, Color(0, 0, 0));
+          it.printf(w/2, h/2, id(roboto32), Color(255, 255, 255), TextAlign::CENTER, "VELADIAL");
+          ESP_LOGI("color_test", "Showing: BLACK + VELADIAL text");
+          break;
+      }
+      state = (state + 1) % 5;
+
+# ---------------------------------------------------------------------------
+# Font — for VELADIAL text
+# ---------------------------------------------------------------------------
+font:
+  - file: "gfonts://Roboto"
+    id: roboto32
+    size: 32
+
+# ---------------------------------------------------------------------------
+# NO LVGL, NO touch, NO sensors, NO multi-theme engine
+# ---------------------------------------------------------------------------
