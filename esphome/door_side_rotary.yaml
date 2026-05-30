@@ -50,22 +50,41 @@ esphome:
   on_boot:
     priority: 800
     then:
-      - logger.log: "VelaDial boot: enabling screen power (GPIO1)"
+      # =====================================================================
+      # BOOT SEQUENCE — aligned with working debug/color-cycle YAML
+      # Key insight: backlight must be ON (raw output) BEFORE GPIO1/GPIO2
+      # and BEFORE LVGL renders. This matches the official Elecrow Lesson02.
+      # =====================================================================
+      # Step 1: Force backlight ON immediately (raw output, no transition)
+      - logger.log: "BOOT: Backlight ON (GPIO46 raw output — matches working debug)"
+      - output.turn_on: gpio_backlight_pwm
+      - delay: 200ms
+      # Step 2: Power LED off
+      - output.turn_off: power_light
+      # Step 3: Screen power enable (GPIO1)
+      - logger.log: "BOOT: GPIO1 HIGH (screen power enable)"
       - output.turn_on: screen_power_enable
-      - delay: 50ms
-      - logger.log: "VelaDial boot: enabling peripheral power (GPIO2)"
+      # Step 4: Peripheral power enable (GPIO2)
+      - logger.log: "BOOT: GPIO2 HIGH (peripheral power enable)"
       - output.turn_on: peripheral_power_enable
-      - delay: 50ms
-      - logger.log: "VelaDial boot: enabling backlight (GPIO46)"
+      - delay: 100ms
+      # Step 5: Set boot guard (prevents sleep/dim for first 60 seconds)
+      - lambda: |-
+          id(boot_guard_active) = true;
+          id(display_awake) = true;
+      - logger.log: "BOOT: Boot guard active — sleep disabled for 60s"
+      # Step 6: Ensure backlight is at full brightness via light component too
       - light.turn_on:
           id: back_light
-          brightness: 80%
-      - output.turn_off: power_light
-      - delay: 200ms
-      - logger.log: "VelaDial boot: multi-theme engine initializing"
+          brightness: 100%
+          transition_length: 0ms
+      - delay: 300ms
+      # Step 7: Initialize LVGL pages and render theme
+      - logger.log: "BOOT: Rendering theme and UI"
       - script.execute: render_theme
-      - script.execute: screen_idle_timer
       - script.execute: update_page_indicator
+      # Step 8: Start boot guard countdown (60s before sleep is allowed)
+      - script.execute: boot_guard_timer
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -200,6 +219,7 @@ display:
     dc_pin: GPIO3
     reset_pin: GPIO14
     invert_colors: true
+    rotation: 0
     auto_clear_enabled: false
     update_interval: never
 
@@ -330,6 +350,10 @@ globals:
     type: bool
     initial_value: "true"
 
+  - id: boot_guard_active
+    type: bool
+    initial_value: "true"
+
   - id: current_page
     type: int
     initial_value: "0"
@@ -384,10 +408,53 @@ lvgl:
       pad_all: 0
 
   # =========================================================================
-  # Top layer — page indicator (3 dots)
+  # Top layer — boot splash overlay + page indicator (3 dots)
   # =========================================================================
   top_layer:
     widgets:
+      # Boot splash overlay — covers entire screen, proves display works
+      # Hidden after 3 seconds by boot_guard_timer script
+      - obj:
+          id: boot_splash_overlay
+          align: CENTER
+          width: 240
+          height: 240
+          bg_color: 0x000000
+          bg_opa: COVER
+          border_width: 0
+          pad_all: 0
+          widgets:
+            - label:
+                id: splash_title
+                align: CENTER
+                y: -30
+                text_font: roboto32
+                text_color: 0x4FC3F7
+                text: "VELADIAL"
+            - label:
+                id: splash_subtitle
+                align: CENTER
+                y: 20
+                text_font: roboto16
+                text_color: 0x888888
+                text: "Booting..."
+            - arc:
+                id: splash_ring
+                align: CENTER
+                width: 220
+                height: 220
+                start_angle: 0
+                end_angle: 360
+                min_value: 0
+                max_value: 100
+                value: 100
+                indicator:
+                  bg_color: 0x4FC3F7
+                  width: 3
+                bg_opa: TRANSP
+                border_width: 0
+                clickable: false
+
       - obj:
           id: page_indicator
           align: BOTTOM_MID
@@ -437,6 +504,7 @@ lvgl:
   pages:
     # -------------------------------------------------------------------
     # PAGE 0: Power
+    # Contains a boot splash overlay that auto-hides after 3 seconds
     # -------------------------------------------------------------------
     - id: power_page
       bg_color: 0x000000
@@ -799,17 +867,23 @@ lvgl:
             border_width: 0
             clickable: false
 
-  # LVGL idle handling
+  # LVGL idle handling — guarded by boot_guard_active
   on_idle:
     - timeout: 60s
       then:
-        - lambda: |-
-            id(display_awake) = false;
-        - light.turn_on:
-            id: back_light
-            brightness: 10%
-            transition_length: 1s
-        - logger.log: "Idle: display sleeping"
+        - if:
+            condition:
+              lambda: 'return !id(boot_guard_active);'
+            then:
+              - lambda: |-
+                  id(display_awake) = false;
+              - light.turn_on:
+                  id: back_light
+                  brightness: 10%
+                  transition_length: 1s
+              - logger.log: "Idle: display sleeping"
+            else:
+              - logger.log: "Idle: boot guard active, staying awake"
 
 # ---------------------------------------------------------------------------
 # Scripts
@@ -854,17 +928,43 @@ script:
                 transition_length: 300ms
             - lvgl.resume:
 
+  - id: boot_guard_timer
+    mode: single
+    then:
+      # Show splash overlay for 3 seconds, then hide it to reveal power page
+      - delay: 3s
+      - logger.log: "Boot: splash done, hiding overlay to reveal UI"
+      - lvgl.widget.update:
+          id: boot_splash_overlay
+          hidden: true
+      # Continue boot guard for remaining 57 seconds (total 60s protection)
+      - delay: 57s
+      - lambda: |-
+          id(boot_guard_active) = false;
+      - logger.log: "Boot guard expired — sleep/dim now allowed"
+      - script.execute: screen_idle_timer
+
   - id: screen_idle_timer
     mode: restart
     then:
-      - delay: 60s
-      - lambda: |-
-          id(display_awake) = false;
-      - light.turn_on:
-          id: back_light
-          brightness: 10%
-          transition_length: 1s
-      - lvgl.pause:
+      # Guard: do not sleep if boot guard is still active
+      - if:
+          condition:
+            lambda: 'return id(boot_guard_active);'
+          then:
+            - logger.log: "Idle timer: boot guard active, skipping sleep"
+      - if:
+          condition:
+            lambda: 'return !id(boot_guard_active);'
+          then:
+            - delay: 60s
+            - lambda: |-
+                id(display_awake) = false;
+            - light.turn_on:
+                id: back_light
+                brightness: 10%
+                transition_length: 1s
+            - lvgl.pause:
 
   # =========================================================================
   # THEME SELECTOR SCRIPTS
@@ -1554,10 +1654,20 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(display_awake);'
+            lambda: 'return id(display_awake) && !id(boot_guard_active);'
           then:
             - lambda: |-
                 float lux = id(lux_value).state;
+                // Guard: if sensor not connected, lux will be NaN or 0
+                // In that case, default to safe visible brightness (80%)
+                if (isnan(lux) || lux < 0.0f) {
+                  ESP_LOGW("backlight", "Lux sensor unavailable, defaulting to 80%%");
+                  auto call = id(back_light).turn_on();
+                  call.set_brightness(0.8f);
+                  call.set_transition_length(1000);
+                  call.perform();
+                  return;
+                }
                 float target;
                 if (lux > 50.0f) {
                   target = 1.0f;
