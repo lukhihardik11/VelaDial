@@ -1,0 +1,154 @@
+# ===========================================================================
+# VelaDial Debug — GPIO Power Test
+# ===========================================================================
+# PURPOSE: Isolate whether GPIO1/GPIO2/GPIO46 can physically light the screen.
+# NO LVGL, NO touch, NO sensors, NO multi-theme engine.
+# Just raw GPIO outputs + backlight.
+#
+# WHAT TO LOOK FOR:
+#   1. Does the backlight physically illuminate? (white glow from screen)
+#   2. Serial log shows "GPIO1 HIGH", "GPIO2 HIGH", "Backlight ON"
+#   3. HA entities allow toggling GPIO1/GPIO2/backlight independently
+#
+# FLASH: esphome run esphome/debug/door_side_display_gpio_power_test.yaml
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Substitutions
+# ---------------------------------------------------------------------------
+substitutions:
+  device_name: veladial-gpio-test
+  friendly_name: VelaDial GPIO Test
+
+# ---------------------------------------------------------------------------
+# ESPHome core — EXACT match to official Elecrow Lesson02
+# ---------------------------------------------------------------------------
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.esp-idf.memory_type: qio_opi
+    board_build.flash_mode: dio
+  on_boot:
+    priority: 800
+    then:
+      # === OFFICIAL ELECROW BOOT ORDER (from Lesson02 GitHub) ===
+      # 1. Backlight ON first
+      - logger.log: "BOOT: Backlight ON (GPIO46 via LEDC PWM)"
+      - output.turn_on: gpio_backlight_pwm
+      - delay: 200ms
+      # 2. Power LED off
+      - logger.log: "BOOT: Power LED OFF (GPIO40)"
+      - output.turn_off: power_light
+      # 3. GPIO1 screen power enable
+      - logger.log: "BOOT: GPIO1 HIGH (screen power enable)"
+      - output.turn_on: screen_power
+      # 4. GPIO2 peripheral power enable
+      - logger.log: "BOOT: GPIO2 HIGH (peripheral power enable)"
+      - output.turn_on: peripheral_power
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+    version: recommended
+
+# ---------------------------------------------------------------------------
+# PSRAM — required per official docs
+# ---------------------------------------------------------------------------
+psram:
+  mode: octal
+  speed: 80MHz
+
+# ---------------------------------------------------------------------------
+# Logging / API / OTA / Wi-Fi
+# ---------------------------------------------------------------------------
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Setup"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+# ---------------------------------------------------------------------------
+# Outputs — GPIO power pins + backlight
+# ---------------------------------------------------------------------------
+output:
+  # Backlight PWM — LEDC (same as official)
+  - platform: ledc
+    pin: GPIO46
+    id: gpio_backlight_pwm
+
+  # Power indicator LED (active LOW = LED on)
+  - platform: gpio
+    id: power_light
+    pin: GPIO40
+
+  # GPIO1 — Screen power enable
+  - platform: gpio
+    id: screen_power
+    pin: GPIO1
+
+  # GPIO2 — I2C/UART peripheral power enable
+  - platform: gpio
+    id: peripheral_power
+    pin: GPIO2
+
+# ---------------------------------------------------------------------------
+# Light entities — exposed to HA for manual toggle testing
+# ---------------------------------------------------------------------------
+light:
+  # Backlight as dimmable light (same as official)
+  - platform: monochromatic
+    id: back_light
+    name: "Backlight"
+    output: gpio_backlight_pwm
+    restore_mode: ALWAYS_ON
+
+# ---------------------------------------------------------------------------
+# Switch entities — exposed to HA for GPIO toggle testing
+# ---------------------------------------------------------------------------
+switch:
+  - platform: output
+    name: "GPIO1 Screen Power"
+    id: sw_gpio1
+    output: screen_power
+    restore_mode: ALWAYS_ON
+
+  - platform: output
+    name: "GPIO2 Peripheral Power"
+    id: sw_gpio2
+    output: peripheral_power
+    restore_mode: ALWAYS_ON
+
+  - platform: output
+    name: "Power LED (GPIO40)"
+    id: sw_power_led
+    output: power_light
+    restore_mode: ALWAYS_OFF
+
+# ---------------------------------------------------------------------------
+# NO display, NO SPI, NO LVGL, NO touch, NO sensors
+# This test ONLY checks if the backlight physically lights up.
+# ---------------------------------------------------------------------------
+# If the backlight does NOT light up with this firmware:
+#   → Hardware issue (ribbon cable, dead backlight, wrong board revision)
+#   → GPIO46 is not actually connected to backlight on this unit
+#
+# If the backlight DOES light up:
+#   → Power path works, proceed to color cycle test
+# ---------------------------------------------------------------------------
