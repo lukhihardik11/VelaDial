@@ -521,7 +521,7 @@ lvgl:
       bg_opa: COVER
       widgets:
         # Theme-specific decorative elements (hidden/shown per theme)
-        # Outer ring decoration
+        # Outer ring decoration (primary arc)
         - arc:
             id: pw_deco_arc
             align: CENTER
@@ -538,6 +538,38 @@ lvgl:
             bg_opa: TRANSP
             border_width: 0
             clickable: false
+
+        # Secondary decorative arc (used by SmartKnob/Eclipse themes)
+        - arc:
+            id: pw_deco_arc2
+            align: CENTER
+            width: 200
+            height: 200
+            start_angle: 135
+            end_angle: 45
+            min_value: 0
+            max_value: 100
+            value: 100
+            indicator:
+              bg_color: 0x111111
+              width: 8
+            bg_opa: TRANSP
+            border_width: 0
+            clickable: false
+            hidden: true
+
+        # Inner glow ring (used by Power/Eclipse themes)
+        - obj:
+            id: pw_inner_glow
+            align: CENTER
+            width: 160
+            height: 160
+            radius: 80
+            bg_opa: TRANSP
+            border_color: 0x111111
+            border_width: 0
+            clickable: false
+            hidden: true
 
         # Main power button area
         - obj:
@@ -589,6 +621,24 @@ lvgl:
             text_font: roboto16
             text_color: 0xAAAAAA
             text: "Bedroom Group"
+
+        # Theme motif symbol/text — changes per theme group
+        - label:
+            id: pw_motif_label
+            align: CENTER
+            y: -55
+            text_font: roboto16
+            text_color: 0x444444
+            text: ""
+
+        # Control hint — always visible
+        - label:
+            id: pw_control_hint
+            align: BOTTOM_MID
+            y: -12
+            text_font: roboto16
+            text_color: 0x555555
+            text: "Press/Tap Toggle"
 
         # Theme name indicator — VISIBLE (shows T## + short name)
         - label:
@@ -1418,15 +1468,138 @@ script:
                 text: "WAIT HA"
                 text_color: 0xFF4444
           else:
+            - lambda: |-
+                ESP_LOGI("ha_cmd", "TOGGLE: old state lights_on=%d", id(lights_on));
             - lvgl.label.update:
                 id: power_status_label
-                text: "Toggling..."
+                text: "Sending..."
                 text_color: 0xFFB300
             - homeassistant.action:
                 action: light.toggle
                 data:
                   entity_id: ${light_group}
-            - logger.log: "TOGGLE BEDROOM GROUP: command sent to light.bedroom_group"
+                capture_response: true
+                on_success:
+                  - logger.log: "TOGGLE BEDROOM GROUP: HA confirmed SUCCESS"
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "OK"
+                      text_color: 0x4CAF50
+                  - delay: 1500ms
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: !lambda |-
+                        if (id(lights_on)) return "On";
+                        return "Off";
+                      text_color: !lambda |-
+                        if (id(lights_on)) return lv_color_hex(0x4CAF50);
+                        return lv_color_hex(0xAAAAAA);
+                on_error:
+                  - logger.log: "TOGGLE BEDROOM GROUP: HA returned ERROR — check Allow Actions permission"
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "HA DENIED"
+                      text_color: 0xFF4444
+                  - delay: 3000ms
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "Enable Actions"
+                      text_color: 0xFF8800
+            - logger.log: "TOGGLE BEDROOM GROUP: command dispatched to light.bedroom_group"
+
+  - id: turn_on_bedroom_group
+    mode: single
+    then:
+      - logger.log: "TURN ON BEDROOM GROUP: requested"
+      - if:
+          condition:
+            binary_sensor.is_off: api_connected
+          then:
+            - lvgl.label.update:
+                id: power_status_label
+                text: "WAIT HA"
+                text_color: 0xFF4444
+          else:
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: ${light_group}
+                capture_response: true
+                on_success:
+                  - logger.log: "TURN ON: HA confirmed SUCCESS"
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "ON OK"
+                      text_color: 0x4CAF50
+                on_error:
+                  - logger.log: "TURN ON: HA returned ERROR"
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "HA DENIED"
+                      text_color: 0xFF4444
+
+  - id: turn_off_bedroom_group
+    mode: single
+    then:
+      - logger.log: "TURN OFF BEDROOM GROUP: requested"
+      - if:
+          condition:
+            binary_sensor.is_off: api_connected
+          then:
+            - lvgl.label.update:
+                id: power_status_label
+                text: "WAIT HA"
+                text_color: 0xFF4444
+          else:
+            - homeassistant.action:
+                action: light.turn_off
+                data:
+                  entity_id: ${light_group}
+                capture_response: true
+                on_success:
+                  - logger.log: "TURN OFF: HA confirmed SUCCESS"
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "OFF OK"
+                      text_color: 0x4CAF50
+                on_error:
+                  - logger.log: "TURN OFF: HA returned ERROR"
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "HA DENIED"
+                      text_color: 0xFF4444
+
+  - id: set_brightness_50_bedroom_group
+    mode: single
+    then:
+      - logger.log: "SET BRIGHTNESS 50: requested"
+      - if:
+          condition:
+            binary_sensor.is_off: api_connected
+          then:
+            - lvgl.label.update:
+                id: power_status_label
+                text: "WAIT HA"
+                text_color: 0xFF4444
+          else:
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: ${light_group}
+                  brightness_pct: "50"
+                capture_response: true
+                on_success:
+                  - logger.log: "BRIGHTNESS 50: HA confirmed SUCCESS"
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "50% OK"
+                      text_color: 0x4CAF50
+                on_error:
+                  - logger.log: "BRIGHTNESS 50: HA returned ERROR"
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: "HA DENIED"
+                      text_color: 0xFF4444
 
   - id: send_brightness
     mode: single
@@ -1671,6 +1844,125 @@ script:
             int t = id(active_theme);
             if (t < 0) t = 0; if (t > 19) t = 19;
             return labels[t];
+
+      # ===================================================================
+      # THEME-SPECIFIC STRUCTURAL CHANGES (5 distinct visual layouts)
+      # Group A (T01,T04,T07,T10): Minimal — thin ring, small button
+      # Group B (T02,T08,T17,T18): SmartKnob — thick partial arc, instrument
+      # Group C (T03,T11,T12):     Power — huge button, glow, no outer arc
+      # Group D (T06):             Night — deep red, very dim, narrow ring
+      # Group E (T05,T13-T16,T19,T20): Eclipse — concentric rings
+      # ===================================================================
+      - lambda: |-
+          int t = id(active_theme);
+          // Determine layout group
+          // A: 0,3,6,9  B: 1,7,16,17  C: 2,10,11  D: 5  E: 4,12,13,14,15,18,19
+          int group = 0; // A=0, B=1, C=2, D=3, E=4
+          if (t == 1 || t == 7 || t == 16 || t == 17) group = 1;
+          else if (t == 2 || t == 10 || t == 11) group = 2;
+          else if (t == 5) group = 3;
+          else if (t == 4 || t == 12 || t == 13 || t == 14 || t == 15 || t == 18 || t == 19) group = 4;
+          ESP_LOGI("theme", "Theme %d -> layout group %d", t, group);
+
+      # Group-specific: secondary arc visibility and style
+      - lvgl.widget.update:
+          id: pw_deco_arc2
+          hidden: !lambda |-
+            int t = id(active_theme);
+            // Show for SmartKnob (B) and Eclipse (E) groups
+            return !(t == 1 || t == 7 || t == 16 || t == 17 ||
+                     t == 4 || t == 12 || t == 13 || t == 14 || t == 15 || t == 18 || t == 19);
+          arc_color: !lambda |-
+            int t = id(active_theme);
+            static const uint32_t colors[] = {
+              0x111111, 0xFF6B35, 0x111111, 0x111111, 0xFFB000,
+              0x111111, 0x111111, 0x4FC3F7, 0x111111, 0x111111,
+              0x111111, 0x111111, 0x555555, 0x805000, 0x3D2400,
+              0x333333, 0xFFB000, 0xFFB000, 0xFFB000, 0xFF8C00
+            };
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return lv_color_hex(colors[t]);
+
+      # Group-specific: inner glow ring visibility
+      - lvgl.widget.update:
+          id: pw_inner_glow
+          hidden: !lambda |-
+            int t = id(active_theme);
+            // Show for Power (C) and Eclipse (E) groups
+            return !(t == 2 || t == 10 || t == 11 ||
+                     t == 4 || t == 12 || t == 13 || t == 14 || t == 15 || t == 18 || t == 19);
+          border_width: !lambda |-
+            int t = id(active_theme);
+            if (t == 2 || t == 10 || t == 11) return 4;  // Power group: thick glow
+            return 2;  // Eclipse: thin concentric
+          border_color: !lambda |-
+            int t = id(active_theme);
+            static const uint32_t colors[] = {
+              0x111111, 0x111111, 0x2A5A2A, 0x111111, 0x3A2800,
+              0x111111, 0x111111, 0x111111, 0x111111, 0x111111,
+              0x3A3A00, 0x1B5E20, 0x333333, 0x3A2000, 0x2A1500,
+              0x222222, 0x222222, 0x222222, 0x222222, 0x3A2000
+            };
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return lv_color_hex(colors[t]);
+
+      # Group-specific: outer arc width changes
+      - lvgl.widget.update:
+          id: pw_deco_arc
+          hidden: !lambda |-
+            int t = id(active_theme);
+            // Hide for Power group (C) — they use glow instead
+            return (t == 2 || t == 10 || t == 11);
+
+      # Group-specific: power button size via border width (visual emphasis)
+      - lvgl.widget.update:
+          id: power_btn
+          border_width: !lambda |-
+            int t = id(active_theme);
+            if (t == 2 || t == 10 || t == 11) return 4;  // Power: thick border
+            if (t == 5) return 1;  // Night: thin subtle
+            if (t == 1 || t == 7 || t == 16 || t == 17) return 3;  // SmartKnob: medium
+            return 2;  // Default
+
+      # Theme motif text — unique per theme, provides visual identity
+      - lvgl.label.update:
+          id: pw_motif_label
+          text: !lambda |-
+            static const char* motifs[] = {
+              "",           // 0: Minimal (clean, no motif)
+              "~ ARC ~",    // 1: SmartKnob
+              "[POWER]",    // 2: Large Center
+              "",           // 3: Simple
+              ":: RING ::", // 4: Preset Ring
+              "* NIGHT *",  // 5: Night Mode
+              "TEXT",       // 6: Text-First
+              "WATCH",      // 7: Apple Watch
+              "<< LED >>",  // 8: LED-Ring
+              "1/3",        // 9: Carousel
+              "BRT",        // 10: Brightness
+              "DOOR",       // 11: Door Switch
+              "LUNAR",      // 12: Lunar Phase
+              "SUNDIAL",    // 13: Sundial
+              "TREE",       // 14: Tree Ring
+              "TOPO",       // 15: Topographic
+              "IRIS",       // 16: Iris
+              "RADAR",      // 17: Radar Sweep
+              "VINYL",      // 18: Vinyl DJ
+              "ECLIPSE"     // 19: Eclipse Corona
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return motifs[t];
+          text_color: !lambda |-
+            static const uint32_t colors[] = {
+              0x333333, 0xFF6B35, 0x4CAF50, 0x333333, 0xFFB000,
+              0x661100, 0x333333, 0x4FC3F7, 0xFFB000, 0x333333,
+              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
+              0x555555, 0xFFB000, 0xFFB000, 0xFFB000, 0xFF8C00
+            };
+            int t = id(active_theme);
+            if (t < 0) t = 0; if (t > 19) t = 19;
+            return lv_color_hex(colors[t]);
 
       - logger.log:
           format: "Theme rendered: %d"
@@ -1921,3 +2213,24 @@ button:
       - logger.log:
           format: "Active theme: %d"
           args: ['id(active_theme)']
+
+  - platform: template
+    name: "VelaDial Turn ON Bedroom Group"
+    id: ha_test_turn_on_btn
+    on_press:
+      - logger.log: "HA BUTTON: Turn ON pressed"
+      - script.execute: turn_on_bedroom_group
+
+  - platform: template
+    name: "VelaDial Turn OFF Bedroom Group"
+    id: ha_test_turn_off_btn
+    on_press:
+      - logger.log: "HA BUTTON: Turn OFF pressed"
+      - script.execute: turn_off_bedroom_group
+
+  - platform: template
+    name: "VelaDial Brightness 50 Bedroom Group"
+    id: ha_test_brightness_btn
+    on_press:
+      - logger.log: "HA BUTTON: Brightness 50 pressed"
+      - script.execute: set_brightness_50_bedroom_group
