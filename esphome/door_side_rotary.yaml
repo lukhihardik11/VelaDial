@@ -329,6 +329,13 @@ binary_sensor:
     name: "API Connected"
     on_state:
       then:
+        - if:
+            condition:
+              binary_sensor.is_on: api_connected
+            then:
+              - logger.log: "HA API CONNECTED"
+            else:
+              - logger.log: "HA API DISCONNECTED"
         - script.execute: update_connection_status
 
 # ---------------------------------------------------------------------------
@@ -565,14 +572,23 @@ lvgl:
             text_color: 0x888888
             text: ""
 
-        # Connection status
+        # Connection status (shown only when disconnected)
         - label:
             id: connection_label
             align: TOP_MID
-            y: 20
+            y: 15
             text_font: roboto16
             text_color: 0x666666
             text: ""
+
+        # Target entity label — shows what we're controlling
+        - label:
+            id: pw_target_label
+            align: TOP_MID
+            y: 35
+            text_font: roboto16
+            text_color: 0xAAAAAA
+            text: "Bedroom Group"
 
         # Theme name indicator — VISIBLE (shows T## + short name)
         - label:
@@ -849,14 +865,14 @@ lvgl:
             bg_opa: COVER
             border_width: 0
 
-        # "THEME" header
+        # "THEME SELECT" header
         - label:
             id: ts_header
             align: TOP_MID
             y: 22
             text_font: roboto16
             text_color: 0x888888
-            text: "THEME"
+            text: "THEME SELECT"
 
         # Theme index: "01/20"
         - label:
@@ -883,7 +899,7 @@ lvgl:
             y: -22
             text_font: roboto16
             text_color: 0x666666
-            text: "Rotate = Browse | Press = Apply"
+            text: "Rotate Browse | Press Apply"
 
   # LVGL idle handling — guarded by boot_guard_active
   on_idle:
@@ -1107,13 +1123,35 @@ script:
           text: "APPLIED"
           text_color: 0x4CAF50
       - lvgl.label.update:
+          id: ts_name
+          text: !lambda |-
+            static const char* names[] = {
+              "Minimal", "SmartKnob", "Power", "Simple", "Ring",
+              "Night", "Text", "Watch", "LED", "Carousel",
+              "Bright", "Switch", "Lunar", "Sundial", "Tree",
+              "Topo", "Iris", "Radar", "Vinyl", "Eclipse"
+            };
+            int idx = id(active_theme);
+            if (idx < 0) idx = 0; if (idx > 19) idx = 19;
+            return names[idx];
+          text_color: 0x4CAF50
+      - lvgl.label.update:
           id: ts_instruction
           text: !lambda |-
             static char buf[32];
-            snprintf(buf, sizeof(buf), "%02d/20 Applied!", id(active_theme) + 1);
+            snprintf(buf, sizeof(buf), "T%02d Applied!", id(active_theme) + 1);
             return buf;
           text_color: 0x4CAF50
       - delay: 800ms
+      # Reset header for next time
+      - lvgl.label.update:
+          id: ts_header
+          text: "THEME SELECT"
+          text_color: 0x888888
+      - lvgl.label.update:
+          id: ts_instruction
+          text: "Rotate Browse | Press Apply"
+          text_color: 0x666666
       # Now transition to power page
       - lvgl.page.show:
           id: power_page
@@ -1139,8 +1177,9 @@ script:
           condition:
             lambda: 'return id(display_awake) && !id(touch_woke_this_cycle) && !id(theme_selector_active);'
           then:
+            - logger.log: "TOUCH POWER TAP: toggle bedroom group"
             - script.execute: screen_idle_timer
-            - script.execute: handle_power_toggle
+            - script.execute: toggle_bedroom_group
 
   - id: guarded_preset_apply
     mode: single
@@ -1315,62 +1354,79 @@ script:
             - script.execute: wake_screen_from_knob
           else:
             - script.execute: screen_idle_timer
-            - if:
-                condition:
-                  lambda: 'return id(theme_selector_active);'
-                then:
-                  # In theme selector: apply selected theme
-                  - logger.log: "SHORT PRESS: applying theme from selector"
-                  - script.execute: apply_theme_from_selector
-            - if:
-                condition:
-                  lambda: 'return !id(theme_selector_active) && id(current_page) == 0;'
-                then:
-                  - logger.log: "SHORT PRESS: power toggle on page 0"
-                  - script.execute: handle_power_toggle
-            - if:
-                condition:
-                  lambda: 'return !id(theme_selector_active) && id(current_page) == 1;'
-                then:
-                  - lvgl.page.show:
-                      id: power_page
-                      animation: MOVE_RIGHT
-                      time: 200ms
-                  - lambda: 'id(current_page) = 0;'
-                  - script.execute: update_page_indicator
-            - if:
-                condition:
-                  lambda: 'return !id(theme_selector_active) && id(current_page) == 2;'
-                then:
-                  - script.execute:
-                      id: apply_preset
-                      preset_index: !lambda 'return id(highlighted_preset);'
+            # CRITICAL: use lambda with early return to prevent fall-through
+            # Previously used sequential if blocks which caused theme-apply
+            # to ALSO fire power toggle (theme_selector_active was set false
+            # by apply_theme_from_selector before the next if evaluated)
+            - lambda: |-
+                if (id(theme_selector_active)) {
+                  // Theme selector mode: apply theme ONLY, then return
+                  ESP_LOGI("knob", "SHORT PRESS: applying theme from selector (no fall-through)");
+                  id(apply_theme_from_selector).execute();
+                  return;
+                }
+                if (id(current_page) == 0) {
+                  ESP_LOGI("knob", "KNOB SHORT PRESS POWER: toggle bedroom group");
+                  id(toggle_bedroom_group).execute();
+                  return;
+                }
+                if (id(current_page) == 1) {
+                  ESP_LOGI("knob", "SHORT PRESS: return to power page from brightness");
+                  // Navigate back to power page
+                  id(current_page) = 0;
+                  id(nav_to_power_from_knob).execute();
+                  return;
+                }
+                if (id(current_page) == 2) {
+                  ESP_LOGI("knob", "SHORT PRESS: apply highlighted preset");
+                  id(knob_apply_preset).execute();
+                  return;
+                }
+
+  # Helper scripts called from handle_knob_press lambda (can't do LVGL/page
+  # navigation directly from lambda, so we delegate to these scripts)
+  - id: nav_to_power_from_knob
+    mode: single
+    then:
+      - lvgl.page.show:
+          id: power_page
+          animation: MOVE_RIGHT
+          time: 200ms
+      - script.execute: update_page_indicator
+
+  - id: knob_apply_preset
+    mode: single
+    then:
+      - script.execute:
+          id: apply_preset
+          preset_index: !lambda 'return id(highlighted_preset);'
 
   # =========================================================================
   # ACTION SCRIPTS
   # =========================================================================
-  - id: handle_power_toggle
+  - id: toggle_bedroom_group
     mode: single
     then:
-      - logger.log:
-          format: "POWER TOGGLE: calling light.toggle on %s (lights_on=%d, api=%d)"
-          args:
-            - '"${light_group}"'
-            - 'id(lights_on)'
-            - 'id(api_connected).state'
+      - logger.log: "TOGGLE BEDROOM GROUP: requested"
       - if:
           condition:
             binary_sensor.is_off: api_connected
           then:
-            - logger.log: "POWER TOGGLE: HA API NOT connected — toggle will fail!"
+            - logger.log: "TOGGLE BEDROOM GROUP: HA API NOT connected — showing WAIT HA"
             - lvgl.label.update:
                 id: power_status_label
-                text: "No HA"
+                text: "WAIT HA"
                 text_color: 0xFF4444
-      - homeassistant.action:
-          action: light.toggle
-          data:
-            entity_id: ${light_group}
+          else:
+            - lvgl.label.update:
+                id: power_status_label
+                text: "Toggling..."
+                text_color: 0xFFB300
+            - homeassistant.action:
+                action: light.toggle
+                data:
+                  entity_id: ${light_group}
+            - logger.log: "TOGGLE BEDROOM GROUP: command sent to light.bedroom_group"
 
   - id: send_brightness
     mode: single
@@ -1737,10 +1793,18 @@ script:
             - lvgl.label.update:
                 id: connection_label
                 text: ""
+            - lvgl.label.update:
+                id: pw_target_label
+                text: "Bedroom Group"
+                text_color: 0xAAAAAA
           else:
             - lvgl.label.update:
                 id: connection_label
-                text: "Unavailable"
+                text: "WAIT HA"
+                text_color: 0xFF4444
+            - lvgl.label.update:
+                id: pw_target_label
+                text: "Bedroom Group"
                 text_color: 0x666666
 
   - id: adaptive_backlight
@@ -1839,21 +1903,21 @@ text_sensor:
               snprintf(buf, sizeof(buf), "%d%%", id(brightness_pct));
               return buf;
 
-  # Expose active theme to HA as diagnostic
+# ---------------------------------------------------------------------------
+# HA Diagnostic Button — triggers toggle_bedroom_group from HA UI
+# ---------------------------------------------------------------------------
+button:
   - platform: template
-    name: "Active Theme"
-    id: active_theme_sensor
-    lambda: |-
-      static const char* names[] = {
-        "Minimal Thermostat", "SmartKnob Arc", "Large Center Power",
-        "Single-Page Simple", "Preset Ring", "Night Mode Ultra-Minimal",
-        "Text-First Utility", "Apple Watch Complications", "LED-Ring Status",
-        "Three-Screen Carousel", "Brightness-First", "Door Switch Replacement",
-        "Lunar Phase", "Sundial Shadow", "Tree Ring Growth",
-        "Topographic Contour", "Iris Aperture", "Radar Sweep",
-        "Vinyl DJ Crossfader", "Eclipse Corona"
-      };
-      int t = id(active_theme);
-      if (t < 0) t = 0; if (t > 19) t = 19;
-      return {names[t]};
-    update_interval: 10s
+    name: "VelaDial Test Toggle Bedroom Group"
+    id: ha_test_toggle_btn
+    on_press:
+      - logger.log: "HA BUTTON: VelaDial Test Toggle Bedroom Group pressed"
+      - script.execute: toggle_bedroom_group
+
+  - platform: template
+    name: "Active Theme Report"
+    id: active_theme_btn
+    on_press:
+      - logger.log:
+          format: "Active theme: %d"
+          args: ['id(active_theme)']
