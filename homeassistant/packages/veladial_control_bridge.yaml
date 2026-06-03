@@ -1,0 +1,94 @@
+# ===========================================================================
+# VelaDial Control Bridge
+# ===========================================================================
+# This package provides a highly reliable fallback control path for VelaDial.
+# Instead of ESPHome directly performing Home Assistant actions (which can fail
+# due to missing permissions or API changes), ESPHome simply publishes its intent
+# to template sensors. This automation listens for those intents and performs
+# the actual action on behalf of VelaDial.
+# ---------------------------------------------------------------------------
+
+automation:
+  - id: 'veladial_door_rotary_control_bridge'
+    alias: 'VelaDial Door Rotary Control Bridge'
+    description: 'Executes light commands requested by VelaDial Door Rotary'
+    mode: queued
+    trigger:
+      - platform: state
+        entity_id: sensor.veladial_door_rotary_request_counter
+    condition:
+      - condition: template
+        value_template: "{{ trigger.to_state.state | int(0) > 0 }}"
+    action:
+      - variables:
+          requested_action: "{{ states('sensor.veladial_door_rotary_requested_action') }}"
+          brightness_pct: "{{ states('sensor.veladial_door_rotary_requested_brightness') | int(50) }}"
+          preset_index: "{{ states('sensor.veladial_door_rotary_requested_preset') | int(0) }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'TURN_ON' }}"
+            sequence:
+              - action: light.turn_on
+                target:
+                  entity_id: light.bedroom_group
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'TURN_OFF' }}"
+            sequence:
+              - action: light.turn_off
+                target:
+                  entity_id: light.bedroom_group
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'TOGGLE' }}"
+            sequence:
+              - action: light.toggle
+                target:
+                  entity_id: light.bedroom_group
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'SET_BRIGHTNESS' }}"
+            sequence:
+              - action: light.turn_on
+                target:
+                  entity_id: light.bedroom_group
+                data:
+                  brightness_pct: "{{ brightness_pct }}"
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'APPLY_PRESET' }}"
+            sequence:
+              - choose:
+                  - conditions: "{{ preset_index == 0 }}"
+                    sequence:
+                      - action: light.turn_on
+                        target:
+                          entity_id: light.bedroom_group
+                        data:
+                          color_temp: 370
+                          brightness_pct: 100
+                  - conditions: "{{ preset_index == 1 }}"
+                    sequence:
+                      - action: light.turn_on
+                        target:
+                          entity_id: light.bedroom_group
+                        data:
+                          color_temp: 454
+                          brightness_pct: 70
+                  - conditions: "{{ preset_index == 2 }}"
+                    sequence:
+                      - action: light.turn_on
+                        target:
+                          entity_id: light.bedroom_group
+                        data:
+                          color_temp: 250
+                          brightness_pct: 100
+                  - conditions: "{{ preset_index == 3 }}"
+                    sequence:
+                      - action: light.turn_on
+                        target:
+                          entity_id: light.bedroom_group
+                        data:
+                          color_temp: 454
+                          brightness_pct: 5

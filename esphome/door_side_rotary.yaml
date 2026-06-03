@@ -37,6 +37,7 @@ substitutions:
   device_name: veladial-door-rotary
   friendly_name: VelaDial Door Rotary
   light_group: light.bedroom_group
+  use_ha_bridge: "false" # Set to "true" if direct HA actions fail
 
 # ---------------------------------------------------------------------------
 # ESPHome core
@@ -298,6 +299,19 @@ sensor:
 # ---------------------------------------------------------------------------
 # Binary Sensors
 # ---------------------------------------------------------------------------
+  # HA Bridge Output Sensors
+  - platform: template
+    name: "VelaDial Door Rotary Request Counter"
+    id: request_counter
+
+  - platform: template
+    name: "VelaDial Door Rotary Requested Brightness"
+    id: requested_brightness
+
+  - platform: template
+    name: "VelaDial Door Rotary Requested Preset"
+    id: requested_preset
+
 binary_sensor:
   - platform: gpio
     pin:
@@ -401,6 +415,14 @@ globals:
   - id: toggle_sequence_id
     type: int
     initial_value: "0"
+
+  - id: bridge_request_counter
+    type: int
+    initial_value: "0"
+
+  - id: expected_power_state
+    type: bool
+    initial_value: "false"
 
   # long_press_handled removed — on_multi_click now cleanly separates short/long press
 
@@ -529,95 +551,12 @@ lvgl:
     # PAGE 0: Power
     # Contains a boot splash overlay that auto-hides after 3 seconds
     # -------------------------------------------------------------------
+
     - id: power_page
       bg_color: 0x000000
       bg_opa: COVER
       widgets:
-        # Theme-specific decorative elements (hidden/shown per theme)
-        # Outer ring decoration (primary arc)
-        - arc:
-            id: pw_deco_arc
-            align: CENTER
-            width: 230
-            height: 230
-            start_angle: 0
-            end_angle: 360
-            min_value: 0
-            max_value: 100
-            value: 100
-            indicator:
-              bg_color: 0x222222
-              width: 3
-            bg_opa: TRANSP
-            border_width: 0
-            clickable: false
-
-        # Secondary decorative arc (used by SmartKnob/Eclipse themes)
-        - arc:
-            id: pw_deco_arc2
-            align: CENTER
-            width: 200
-            height: 200
-            start_angle: 135
-            end_angle: 45
-            min_value: 0
-            max_value: 100
-            value: 100
-            indicator:
-              bg_color: 0x111111
-              width: 8
-            bg_opa: TRANSP
-            border_width: 0
-            clickable: false
-            hidden: true
-
-        # Inner glow ring (used by Power/Eclipse themes)
-        - obj:
-            id: pw_inner_glow
-            align: CENTER
-            width: 160
-            height: 160
-            radius: 80
-            bg_opa: TRANSP
-            border_color: 0x111111
-            border_width: 0
-            clickable: false
-            hidden: true
-
-        # Main power button area
-        - obj:
-            id: power_btn
-            align: CENTER
-            width: 120
-            height: 120
-            radius: 60
-            bg_color: 0x1A1A1A
-            border_color: 0x333333
-            border_width: 2
-            clickable: true
-            group: main_group
-            on_click:
-              - script.execute: guarded_power_toggle
-
-        # Power icon/label — updated dynamically from HA state import
-        - label:
-            id: power_icon_label
-            align: CENTER
-            y: -10
-            text_font: roboto48
-            text_color: 0xFFFFFF
-            text: "OFF"
-
-        # Power status sublabel
-        - label:
-            id: power_status_label
-            align: CENTER
-            y: 30
-            text_font: roboto16
-            text_color: 0x888888
-            text: ""
-
-        # Connection status (shown only when disconnected)
+        # COMMON ELEMENTS (Always visible)
         - label:
             id: connection_label
             align: TOP_MID
@@ -625,8 +564,6 @@ lvgl:
             text_font: roboto16
             text_color: 0x666666
             text: ""
-
-        # Target entity label — shows what we're controlling
         - label:
             id: pw_target_label
             align: TOP_MID
@@ -634,17 +571,6 @@ lvgl:
             text_font: roboto16
             text_color: 0xAAAAAA
             text: "Bedroom Group"
-
-        # Theme motif symbol/text — changes per theme group
-        - label:
-            id: pw_motif_label
-            align: CENTER
-            y: -55
-            text_font: roboto16
-            text_color: 0x444444
-            text: ""
-
-        # Control hint — always visible
         - label:
             id: pw_control_hint
             align: BOTTOM_MID
@@ -652,8 +578,6 @@ lvgl:
             text_font: roboto16
             text_color: 0x555555
             text: "Press/Tap"
-
-        # Theme name indicator — VISIBLE (shows T## + full name)
         - label:
             id: pw_theme_name
             align: BOTTOM_MID
@@ -661,12 +585,291 @@ lvgl:
             text_font: roboto24
             text_color: 0x888888
             text: "T01 Minimal"
+        - label:
+            id: power_status_label
+            align: BOTTOM_MID
+            y: -65
+            text_font: roboto16
+            text_color: 0x888888
+            text: ""
+
+        # ==========================================
+        # LAYOUT 0: Minimal Thermostat
+        # ==========================================
+        - obj:
+            id: layout_minimal
+            align: CENTER
+            width: 240
+            height: 240
+            bg_opa: TRANSP
+            border_width: 0
+            hidden: false
+            widgets:
+              - arc:
+                  id: minimal_arc
+                  align: CENTER
+                  width: 230
+                  height: 230
+                  start_angle: 0
+                  end_angle: 360
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  indicator:
+                    bg_color: 0x4FC3F7
+                    width: 2
+                  bg_opa: TRANSP
+                  border_width: 0
+                  clickable: false
+              - obj:
+                  id: minimal_btn
+                  align: CENTER
+                  width: 100
+                  height: 100
+                  radius: 50
+                  bg_opa: TRANSP
+                  border_color: 0x4FC3F7
+                  border_width: 1
+                  clickable: true
+                  group: main_group
+                  on_click:
+                    - script.execute: guarded_power_toggle
+                  widgets:
+                    - label:
+                        id: minimal_icon
+                        align: CENTER
+                        text_font: roboto48
+                        text_color: 0xFFFFFF
+                        text: "OFF"
+
+        # ==========================================
+        # LAYOUT 1: SmartKnob-Inspired Arc
+        # ==========================================
+        - obj:
+            id: layout_smartknob
+            align: CENTER
+            width: 240
+            height: 240
+            bg_opa: TRANSP
+            border_width: 0
+            hidden: true
+            widgets:
+              - arc:
+                  id: smartknob_arc_outer
+                  align: CENTER
+                  width: 220
+                  height: 220
+                  start_angle: 135
+                  end_angle: 45
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  indicator:
+                    bg_color: 0xFF6B35
+                    width: 12
+                  bg_opa: TRANSP
+                  border_width: 0
+                  clickable: false
+              - arc:
+                  id: smartknob_arc_inner
+                  align: CENTER
+                  width: 180
+                  height: 180
+                  start_angle: 135
+                  end_angle: 45
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  indicator:
+                    bg_color: 0x333333
+                    width: 4
+                  bg_opa: TRANSP
+                  border_width: 0
+                  clickable: false
+              - obj:
+                  id: smartknob_btn
+                  align: CENTER
+                  width: 120
+                  height: 120
+                  radius: 60
+                  bg_color: 0x1A1A1A
+                  border_width: 0
+                  clickable: true
+                  group: main_group
+                  on_click:
+                    - script.execute: guarded_power_toggle
+                  widgets:
+                    - label:
+                        id: smartknob_icon
+                        align: CENTER
+                        y: -10
+                        text_font: roboto48
+                        text_color: 0xFFFFFF
+                        text: "OFF"
+                    - label:
+                        id: smartknob_motif
+                        align: CENTER
+                        y: 30
+                        text_font: roboto16
+                        text_color: 0xFF6B35
+                        text: "ARC"
+
+        # ==========================================
+        # LAYOUT 2: Large Center Power Button
+        # ==========================================
+        - obj:
+            id: layout_power
+            align: CENTER
+            width: 240
+            height: 240
+            bg_opa: TRANSP
+            border_width: 0
+            hidden: true
+            widgets:
+              - obj:
+                  id: power_glow
+                  align: CENTER
+                  width: 180
+                  height: 180
+                  radius: 90
+                  bg_color: 0x4CAF50
+                  bg_opa: 30%
+                  border_width: 0
+                  clickable: false
+              - obj:
+                  id: power_large_btn
+                  align: CENTER
+                  width: 140
+                  height: 140
+                  radius: 70
+                  bg_color: 0x4CAF50
+                  border_color: 0xFFFFFF
+                  border_width: 3
+                  clickable: true
+                  group: main_group
+                  on_click:
+                    - script.execute: guarded_power_toggle
+                  widgets:
+                    - label:
+                        id: power_large_icon
+                        align: CENTER
+                        text_font: roboto48
+                        text_color: 0x000000
+                        text: "OFF"
+
+        # ==========================================
+        # LAYOUT 3: Preset Ring UI
+        # ==========================================
+        - obj:
+            id: layout_presetring
+            align: CENTER
+            width: 240
+            height: 240
+            bg_opa: TRANSP
+            border_width: 0
+            hidden: true
+            widgets:
+              - arc:
+                  id: presetring_arc
+                  align: CENTER
+                  width: 210
+                  height: 210
+                  start_angle: 0
+                  end_angle: 360
+                  min_value: 0
+                  max_value: 100
+                  value: 25
+                  indicator:
+                    bg_color: 0xFFB000
+                    width: 6
+                  bg_opa: TRANSP
+                  border_width: 0
+                  clickable: false
+              - obj:
+                  id: presetring_btn
+                  align: CENTER
+                  width: 110
+                  height: 110
+                  radius: 55
+                  bg_color: 0x000000
+                  border_color: 0xFFB000
+                  border_width: 2
+                  clickable: true
+                  group: main_group
+                  on_click:
+                    - script.execute: guarded_power_toggle
+                  widgets:
+                    - label:
+                        id: presetring_icon
+                        align: CENTER
+                        text_font: roboto48
+                        text_color: 0xFFFFFF
+                        text: "OFF"
+                    - label:
+                        id: presetring_motif
+                        align: TOP_MID
+                        y: 10
+                        text_font: roboto16
+                        text_color: 0xFFB000
+                        text: "RING"
+
+        # ==========================================
+        # LAYOUT 4: Eclipse Corona
+        # ==========================================
+        - obj:
+            id: layout_eclipse
+            align: CENTER
+            width: 240
+            height: 240
+            bg_opa: TRANSP
+            border_width: 0
+            hidden: true
+            widgets:
+              - obj:
+                  id: eclipse_outer
+                  align: CENTER
+                  width: 230
+                  height: 230
+                  radius: 115
+                  bg_opa: TRANSP
+                  border_color: 0xFFD000
+                  border_width: 1
+                  clickable: false
+              - obj:
+                  id: eclipse_mid
+                  align: CENTER
+                  width: 190
+                  height: 190
+                  radius: 95
+                  bg_opa: TRANSP
+                  border_color: 0xFF8C00
+                  border_width: 2
+                  clickable: false
+              - obj:
+                  id: eclipse_btn
+                  align: CENTER
+                  width: 130
+                  height: 130
+                  radius: 65
+                  bg_color: 0x000000
+                  border_color: 0xFFB000
+                  border_width: 4
+                  clickable: true
+                  group: main_group
+                  on_click:
+                    - script.execute: guarded_power_toggle
+                  widgets:
+                    - label:
+                        id: eclipse_icon
+                        align: CENTER
+                        text_font: roboto48
+                        text_color: 0xFFFFFF
+                        text: "OFF"
 
       on_swipe_left:
         - script.execute: guarded_swipe_left
       on_swipe_right:
         - script.execute: guarded_swipe_right
-
     # -------------------------------------------------------------------
     # PAGE 1: Brightness
     # -------------------------------------------------------------------
@@ -1502,52 +1705,66 @@ script:
           else:
             - lambda: |-
                 int seq = id(toggle_sequence_id);
-                bool was_on = id(lights_on);
+                id(expected_power_state) = !id(lights_on);
                 ESP_LOGI("ha_cmd", "POWER CMD seq=%d: lights_on=%d -> sending %s",
-                         seq, was_on, was_on ? "light.turn_off" : "light.turn_on");
+                         seq, id(lights_on), id(lights_on) ? "TURN_OFF" : "TURN_ON");
             - lvgl.label.update:
                 id: power_status_label
                 text: !lambda |-
-                  if (id(lights_on)) return "Turning OFF...";
-                  return "Turning ON...";
+                  if (id(lights_on)) return std::string("Turning OFF...").c_str();
+                  return std::string("Turning ON...").c_str();
                 text_color: 0xFFB300
             - if:
                 condition:
                   lambda: 'return id(lights_on);'
                 then:
-                  # State is ON -> send turn_off
-                  - homeassistant.action:
-                      action: light.turn_off
-                      data:
-                        entity_id: ${light_group}
+                  - if:
+                      condition:
+                        lambda: 'return "${use_ha_bridge}" == "true";'
+                      then:
+                        - lambda: |-
+                            id(requested_action).publish_state("TURN_OFF");
+                            id(bridge_request_counter) += 1;
+                            id(request_counter).publish_state(id(bridge_request_counter));
+                      else:
+                        - homeassistant.action:
+                            action: light.turn_off
+                            data:
+                              entity_id: ${light_group}
                 else:
-                  # State is OFF -> send turn_on
-                  - homeassistant.action:
-                      action: light.turn_on
-                      data:
-                        entity_id: ${light_group}
+                  - if:
+                      condition:
+                        lambda: 'return "${use_ha_bridge}" == "true";'
+                      then:
+                        - lambda: |-
+                            id(requested_action).publish_state("TURN_ON");
+                            id(bridge_request_counter) += 1;
+                            id(request_counter).publish_state(id(bridge_request_counter));
+                      else:
+                        - homeassistant.action:
+                            action: light.turn_on
+                            data:
+                              entity_id: ${light_group}
             - lambda: |-
                 ESP_LOGI("ha_cmd", "POWER CMD dispatched to ${light_group} (seq=%d)", id(toggle_sequence_id));
-            # Part C: State verification after 1000ms
             - delay: 1000ms
             - lambda: |-
-                bool expected_on = !id(lights_on);  // We toggled, so expected is opposite of current
-                // Note: by now, if HA worked, the text_sensor import should have updated lights_on
-                // But we check the CURRENT value which may have been updated by the import
-                int seq = id(toggle_sequence_id);
+                bool expected_on = id(expected_power_state);
                 bool current = id(lights_on);
-                // The import fires asynchronously. If state changed, import already ran.
-                // We log the verification result.
-                ESP_LOGI("ha_verify", "VERIFY seq=%d: state_now=%d", seq, current);
-            - lvgl.label.update:
-                id: power_status_label
-                text: !lambda |-
-                  if (id(lights_on)) return "Bedroom Group ON";
-                  return "Bedroom Group OFF";
-                text_color: !lambda |-
-                  if (id(lights_on)) return lv_color_hex(0x4CAF50);
-                  return lv_color_hex(0xAAAAAA);
-
+                ESP_LOGI("ha_verify", "VERIFY seq=%d: state_now=%d expected=%d", id(toggle_sequence_id), current, expected_on);
+            - if:
+                condition:
+                  lambda: 'return id(lights_on) != id(expected_power_state);'
+                then:
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: !lambda 'return std::string("${use_ha_bridge}" == "true" ? "CHECK HA BRIDGE" : "HA VERIFY FAIL").c_str();'
+                      text_color: 0xFF4444
+                else:
+                  - lvgl.label.update:
+                      id: power_status_label
+                      text: !lambda 'return std::string(id(lights_on) ? "Bedroom Group ON" : "Bedroom Group OFF").c_str();'
+                      text_color: 0x4CAF50
   # Legacy toggle script — kept for diagnostic button only
   - id: toggle_bedroom_group
     mode: single
@@ -1665,11 +1882,21 @@ script:
   - id: send_brightness
     mode: single
     then:
-      - homeassistant.action:
-          action: light.turn_on
-          data:
-            entity_id: ${light_group}
-            brightness_pct: !lambda 'return id(brightness_pct);'
+      - if:
+          condition:
+            lambda: 'return "${use_ha_bridge}" == "true";'
+          then:
+            - lambda: |-
+                  id(requested_brightness).publish_state(id(brightness_pct));
+                  id(requested_action).publish_state("SET_BRIGHTNESS");
+                  id(bridge_request_counter) += 1;
+                  id(request_counter).publish_state(id(bridge_request_counter));
+          else:
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: ${light_group}
+                  brightness_pct: !lambda 'return id(brightness_pct);'
 
   - id: send_brightness_debounced
     mode: restart
@@ -1685,44 +1912,54 @@ script:
       - lambda: 'id(active_preset) = preset_index;'
       - if:
           condition:
-            lambda: 'return preset_index == 0;'
+            lambda: 'return "${use_ha_bridge}" == "true";'
           then:
-            - homeassistant.action:
-                action: light.turn_on
-                data:
-                  entity_id: ${light_group}
-                  color_temp: "370"
-                  brightness_pct: "100"
-      - if:
-          condition:
-            lambda: 'return preset_index == 1;'
-          then:
-            - homeassistant.action:
-                action: light.turn_on
-                data:
-                  entity_id: ${light_group}
-                  color_temp: "454"
-                  brightness_pct: "70"
-      - if:
-          condition:
-            lambda: 'return preset_index == 2;'
-          then:
-            - homeassistant.action:
-                action: light.turn_on
-                data:
-                  entity_id: ${light_group}
-                  color_temp: "250"
-                  brightness_pct: "100"
-      - if:
-          condition:
-            lambda: 'return preset_index == 3;'
-          then:
-            - homeassistant.action:
-                action: light.turn_on
-                data:
-                  entity_id: ${light_group}
-                  color_temp: "454"
-                  brightness_pct: "5"
+            - lambda: |-
+                  id(requested_preset).publish_state(preset_index);
+                  id(requested_action).publish_state("APPLY_PRESET");
+                  id(bridge_request_counter) += 1;
+                  id(request_counter).publish_state(id(bridge_request_counter));
+          else:
+            - if:
+                condition:
+                  lambda: 'return preset_index == 0;'
+                then:
+                  - homeassistant.action:
+                      action: light.turn_on
+                      data:
+                        entity_id: ${light_group}
+                        color_temp: "370"
+                        brightness_pct: "100"
+            - if:
+                condition:
+                  lambda: 'return preset_index == 1;'
+                then:
+                  - homeassistant.action:
+                      action: light.turn_on
+                      data:
+                        entity_id: ${light_group}
+                        color_temp: "454"
+                        brightness_pct: "70"
+            - if:
+                condition:
+                  lambda: 'return preset_index == 2;'
+                then:
+                  - homeassistant.action:
+                      action: light.turn_on
+                      data:
+                        entity_id: ${light_group}
+                        color_temp: "250"
+                        brightness_pct: "100"
+            - if:
+                condition:
+                  lambda: 'return preset_index == 3;'
+                then:
+                  - homeassistant.action:
+                      action: light.turn_on
+                      data:
+                        entity_id: ${light_group}
+                        color_temp: "454"
+                        brightness_pct: "5"
       - script.execute: update_preset_buttons
       - script.execute: update_led_ring
 
@@ -1736,302 +1973,57 @@ script:
     mode: single
     then:
       - lambda: |-
-          // Theme color palettes: [primary, secondary, accent, bg_tint]
-          // Each theme defines its visual identity through colors
-          static const uint32_t theme_colors[][4] = {
-            {0x4FC3F7, 0x222222, 0xFFFFFF, 0x0A0A0A},  // 0: Minimal Thermostat (ice blue)
-            {0xFF6B35, 0x333333, 0xFFFFFF, 0x111111},  // 1: SmartKnob Arc (orange)
-            {0x4CAF50, 0x1E3A1E, 0xFFFFFF, 0x0D0D0D},  // 2: Large Center Power (green)
-            {0xFFB74D, 0x222222, 0xFFFFFF, 0x0A0A0A},  // 3: Single-Page Simple (warm)
-            {0xFFB000, 0x1A1A1A, 0xFFFFFF, 0x121212},  // 4: Preset Ring (amber)
-            {0xFF4400, 0x0A0A0A, 0x333333, 0x050505},  // 5: Night Mode (deep red)
-            {0xFFB000, 0x1A1A1A, 0xFFFFFF, 0x0A0A0A},  // 6: Text-First (amber)
-            {0x4FC3F7, 0x222222, 0x66BB6A, 0x000000},  // 7: Apple Watch (blue+green)
-            {0xFFB000, 0x1A1A1A, 0xFF8C00, 0x0A0A0A},  // 8: LED-Ring Status (amber)
-            {0xFFB000, 0x222222, 0xFFFFFF, 0x0A0A0A},  // 9: Three-Screen (amber)
-            {0xFFB000, 0x333333, 0xFFFFFF, 0x0A0A0A},  // 10: Brightness-First (amber)
-            {0x4CAF50, 0x1B5E20, 0xFFFFFF, 0x111111},  // 11: Door Switch (green)
-            {0xE8E0D0, 0x555555, 0xFFFFFF, 0x000000},  // 12: Lunar Phase (moon white)
-            {0xFFB000, 0x3A2000, 0x805000, 0x000000},  // 13: Sundial Shadow (gold)
-            {0xFFD080, 0x3D2400, 0x8D5600, 0x000000},  // 14: Tree Ring (wood)
-            {0xFFB000, 0x222222, 0xFF8C00, 0x050505},  // 15: Topographic (amber)
-            {0xFFB000, 0x555555, 0xFFFFFF, 0x111111},  // 16: Iris Aperture (amber)
-            {0xFFB000, 0x222222, 0xFF8C00, 0x111111},  // 17: Radar Sweep (amber)
-            {0xFFB000, 0x1A1A1A, 0xFF8C00, 0x111111},  // 18: Vinyl DJ (amber)
-            {0xFFB000, 0xFF8C00, 0xFFD000, 0x000000},  // 19: Eclipse Corona (gold)
-          };
-
           int t = id(active_theme);
-          if (t < 0) t = 0;
-          if (t > 19) t = 19;
+          int group = 0; // 0=Minimal, 1=SmartKnob, 2=Power, 3=PresetRing, 4=Eclipse
+          if (t == 1 || t == 7 || t == 16 || t == 17) group = 1;
+          else if (t == 2 || t == 10 || t == 11) group = 2;
+          else if (t == 4 || t == 5 || t == 8 || t == 9) group = 3;
+          else if (t == 12 || t == 13 || t == 14 || t == 15 || t == 18 || t == 19) group = 4;
+          ESP_LOGI("theme", "Theme %d -> layout group %d", t, group);
 
-          uint32_t primary = theme_colors[t][0];
-          uint32_t secondary = theme_colors[t][1];
-          uint32_t accent = theme_colors[t][2];
-          uint32_t bg_tint = theme_colors[t][3];
-
-          // Store for use in widget updates
-          // (ESPHome lambdas can't easily pass to subsequent actions,
-          //  so we use the globals + widget updates below)
-
-      # Update Power page decorative arc color per theme
       - lvgl.widget.update:
-          id: pw_deco_arc
+          id: layout_minimal
+          hidden: !lambda 'int t = id(active_theme); int g = 0; if (t==1||t==7||t==16||t==17) g=1; else if (t==2||t==10||t==11) g=2; else if (t==4||t==5||t==8||t==9) g=3; else if (t==12||t==13||t==14||t==15||t==18||t==19) g=4; return g != 0;'
+      - lvgl.widget.update:
+          id: layout_smartknob
+          hidden: !lambda 'int t = id(active_theme); int g = 0; if (t==1||t==7||t==16||t==17) g=1; else if (t==2||t==10||t==11) g=2; else if (t==4||t==5||t==8||t==9) g=3; else if (t==12||t==13||t==14||t==15||t==18||t==19) g=4; return g != 1;'
+      - lvgl.widget.update:
+          id: layout_power
+          hidden: !lambda 'int t = id(active_theme); int g = 0; if (t==1||t==7||t==16||t==17) g=1; else if (t==2||t==10||t==11) g=2; else if (t==4||t==5||t==8||t==9) g=3; else if (t==12||t==13||t==14||t==15||t==18||t==19) g=4; return g != 2;'
+      - lvgl.widget.update:
+          id: layout_presetring
+          hidden: !lambda 'int t = id(active_theme); int g = 0; if (t==1||t==7||t==16||t==17) g=1; else if (t==2||t==10||t==11) g=2; else if (t==4||t==5||t==8||t==9) g=3; else if (t==12||t==13||t==14||t==15||t==18||t==19) g=4; return g != 3;'
+      - lvgl.widget.update:
+          id: layout_eclipse
+          hidden: !lambda 'int t = id(active_theme); int g = 0; if (t==1||t==7||t==16||t==17) g=1; else if (t==2||t==10||t==11) g=2; else if (t==4||t==5||t==8||t==9) g=3; else if (t==12||t==13||t==14||t==15||t==18||t==19) g=4; return g != 4;'
+
+      # Also update theme colors in the specific layouts
+      - lvgl.widget.update:
+          id: minimal_arc
           arc_color: !lambda |-
-            static const uint32_t colors[] = {
-              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
-              0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
-              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
-              0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return lv_color_hex(colors[t]);
-
-      # Update Power button border color
+            static const uint32_t colors[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+            int t = id(active_theme); if (t < 0) t = 0; if (t > 19) t = 19; return lv_color_hex(colors[t]);
       - lvgl.widget.update:
-          id: power_btn
+          id: minimal_btn
           border_color: !lambda |-
-            static const uint32_t colors[] = {
-              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
-              0x331100, 0x333333, 0x333333, 0xFFB000, 0x333333,
-              0x333333, 0x4CAF50, 0x555555, 0x805000, 0x3D2400,
-              0x333333, 0x555555, 0x333333, 0x333333, 0xFF8C00
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return lv_color_hex(colors[t]);
+            static const uint32_t colors[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+            int t = id(active_theme); if (t < 0) t = 0; if (t > 19) t = 19; return lv_color_hex(colors[t]);
 
-      # Update brightness arc indicator color per theme
-      - lvgl.widget.update:
-          id: brightness_arc
-          arc_color: !lambda |-
-            static const uint32_t colors[] = {
-              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
-              0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
-              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
-              0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return lv_color_hex(colors[t]);
-
-      # Update decorative sub-arc on brightness page
-      - lvgl.widget.update:
-          id: br_deco_arc
-          arc_color: !lambda |-
-            static const uint32_t colors[] = {
-              0x1A3040, 0x2A1500, 0x0D2A0D, 0x2A1A00, 0x1A1200,
-              0x1A0800, 0x1A1200, 0x1A3040, 0x1A1200, 0x1A1200,
-              0x1A1200, 0x0D2A0D, 0x222222, 0x1A1000, 0x1A0E00,
-              0x1A1200, 0x1A1200, 0x1A1200, 0x1A1200, 0x1A0A00
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return lv_color_hex(colors[t]);
-
-      # Update theme name on power page (T## + short name, visible color)
       - lvgl.label.update:
           id: pw_theme_name
           text: !lambda |-
-            static const char* names[] = {
-              "Minimal", "SmartKnob", "Power", "Simple", "Ring",
-              "Night", "Text", "Watch", "LED", "Carousel",
-              "Bright", "Switch", "Lunar", "Sundial", "Tree",
-              "Topo", "Iris", "Radar", "Vinyl", "Eclipse"
-            };
-            static char buf[24];
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            snprintf(buf, sizeof(buf), "T%02d %s", t + 1, names[t]);
-            return buf;
+            static const char* names[] = {"Minimal", "SmartKnob", "Power", "Simple", "Ring", "Night", "Text", "Watch", "LED", "Carousel", "Bright", "Switch", "Lunar", "Sundial", "Tree", "Topo", "Iris", "Radar", "Vinyl", "Eclipse"};
+            static char buf[24]; int t = id(active_theme); if (t < 0) t = 0; if (t > 19) t = 19; snprintf(buf, sizeof(buf), "T%02d %s", t + 1, names[t]); return buf;
           text_color: !lambda |-
-            static const uint32_t colors[] = {
-              0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
-              0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
-              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
-              0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return lv_color_hex(colors[t]);
+            static const uint32_t colors[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+            int t = id(active_theme); if (t < 0) t = 0; if (t > 19) t = 19; return lv_color_hex(colors[t]);
 
-      # Update preset button labels per theme
-      - lvgl.label.update:
-          id: preset_label_0
-          text: !lambda |-
-            static const char* labels[] = {
-              "Warm", "Warm", "Warm", "Warm", "Warm",
-              "Dim", "Warm", "Warm", "Warm", "Warm",
-              "Warm", "Warm", "Full", "Noon", "Summer",
-              "Summit", "Wide", "Wide", "Track A", "Maximum"
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return labels[t];
-      - lvgl.label.update:
-          id: preset_label_1
-          text: !lambda |-
-            static const char* labels[] = {
-              "Amber", "Amber", "Amber", "Amber", "Amber",
-              "Glow", "Amber", "Amber", "Amber", "Amber",
-              "Amber", "Amber", "Waxing", "Golden", "Autumn",
-              "Ridge", "Portrait", "Focused", "Track B", "Corona"
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return labels[t];
-      - lvgl.label.update:
-          id: preset_label_2
-          text: !lambda |-
-            static const char* labels[] = {
-              "Neutral", "Neutral", "Neutral", "Neutral", "Neutral",
-              "Low", "Neutral", "Neutral", "Neutral", "Neutral",
-              "Neutral", "Neutral", "Quarter", "Morning", "Spring",
-              "Plateau", "Landscape", "Daylight", "Track C", "Totality"
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return labels[t];
-      - lvgl.label.update:
-          id: preset_label_3
-          text: !lambda |-
-            static const char* labels[] = {
-              "Night", "Night", "Night", "Night", "Night",
-              "Off", "Night", "Night", "Night", "Night",
-              "Night", "Night", "New", "Twilight", "Winter",
-              "Valley", "Pinhole", "Stealth", "Track D", "Partial"
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return labels[t];
-
-      # ===================================================================
-      # THEME-SPECIFIC STRUCTURAL CHANGES (5 distinct visual layouts)
-      # Group A (T01,T04,T07,T10): Minimal — thin ring, small button
-      # Group B (T02,T08,T17,T18): SmartKnob — thick partial arc, instrument
-      # Group C (T03,T11,T12):     Power — huge button, glow, no outer arc
-      # Group D (T06):             Night — deep red, very dim, narrow ring
-      # Group E (T05,T13-T16,T19,T20): Eclipse — concentric rings
-      # ===================================================================
-      - lambda: |-
-          int t = id(active_theme);
-          // Determine layout group
-          // A: 0,3,6,9  B: 1,7,16,17  C: 2,10,11  D: 5  E: 4,12,13,14,15,18,19
-          int group = 0; // A=0, B=1, C=2, D=3, E=4
-          if (t == 1 || t == 7 || t == 16 || t == 17) group = 1;
-          else if (t == 2 || t == 10 || t == 11) group = 2;
-          else if (t == 5) group = 3;
-          else if (t == 4 || t == 12 || t == 13 || t == 14 || t == 15 || t == 18 || t == 19) group = 4;
-          ESP_LOGI("theme", "Theme %d -> layout group %d", t, group);
-
-      # Group-specific: secondary arc visibility and style
       - lvgl.widget.update:
-          id: pw_deco_arc2
-          hidden: !lambda |-
-            int t = id(active_theme);
-            // Show for SmartKnob (B) and Eclipse (E) groups
-            return !(t == 1 || t == 7 || t == 16 || t == 17 ||
-                     t == 4 || t == 12 || t == 13 || t == 14 || t == 15 || t == 18 || t == 19);
+          id: brightness_arc
           arc_color: !lambda |-
-            int t = id(active_theme);
-            static const uint32_t colors[] = {
-              0x111111, 0xFF6B35, 0x111111, 0x111111, 0xFFB000,
-              0x111111, 0x111111, 0x4FC3F7, 0x111111, 0x111111,
-              0x111111, 0x111111, 0x555555, 0x805000, 0x3D2400,
-              0x333333, 0xFFB000, 0xFFB000, 0xFFB000, 0xFF8C00
-            };
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return lv_color_hex(colors[t]);
+            static const uint32_t colors[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+            int t = id(active_theme); if (t < 0) t = 0; if (t > 19) t = 19; return lv_color_hex(colors[t]);
 
-      # Group-specific: inner glow ring visibility
-      - lvgl.widget.update:
-          id: pw_inner_glow
-          hidden: !lambda |-
-            int t = id(active_theme);
-            // Show for Power (C) and Eclipse (E) groups
-            return !(t == 2 || t == 10 || t == 11 ||
-                     t == 4 || t == 12 || t == 13 || t == 14 || t == 15 || t == 18 || t == 19);
-          border_width: !lambda |-
-            int t = id(active_theme);
-            if (t == 2 || t == 10 || t == 11) return 4;  // Power group: thick glow
-            return 2;  // Eclipse: thin concentric
-          border_color: !lambda |-
-            int t = id(active_theme);
-            static const uint32_t colors[] = {
-              0x111111, 0x111111, 0x2A5A2A, 0x111111, 0x3A2800,
-              0x111111, 0x111111, 0x111111, 0x111111, 0x111111,
-              0x3A3A00, 0x1B5E20, 0x333333, 0x3A2000, 0x2A1500,
-              0x222222, 0x222222, 0x222222, 0x222222, 0x3A2000
-            };
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return lv_color_hex(colors[t]);
-
-      # Group-specific: outer arc width changes
-      - lvgl.widget.update:
-          id: pw_deco_arc
-          hidden: !lambda |-
-            int t = id(active_theme);
-            // Hide for Power group (C) — they use glow instead
-            return (t == 2 || t == 10 || t == 11);
-
-      # Group-specific: power button size via border width (visual emphasis)
-      - lvgl.widget.update:
-          id: power_btn
-          border_width: !lambda |-
-            int t = id(active_theme);
-            if (t == 2 || t == 10 || t == 11) return 4;  // Power: thick border
-            if (t == 5) return 1;  // Night: thin subtle
-            if (t == 1 || t == 7 || t == 16 || t == 17) return 3;  // SmartKnob: medium
-            return 2;  // Default
-
-      # Theme motif text — unique per theme, provides visual identity
-      - lvgl.label.update:
-          id: pw_motif_label
-          text: !lambda |-
-            static const char* motifs[] = {
-              "",           // 0: Minimal (clean, no motif)
-              "~ ARC ~",    // 1: SmartKnob
-              "[POWER]",    // 2: Large Center
-              "",           // 3: Simple
-              ":: RING ::", // 4: Preset Ring
-              "* NIGHT *",  // 5: Night Mode
-              "TEXT",       // 6: Text-First
-              "WATCH",      // 7: Apple Watch
-              "<< LED >>",  // 8: LED-Ring
-              "1/3",        // 9: Carousel
-              "BRT",        // 10: Brightness
-              "DOOR",       // 11: Door Switch
-              "LUNAR",      // 12: Lunar Phase
-              "SUNDIAL",    // 13: Sundial
-              "TREE",       // 14: Tree Ring
-              "TOPO",       // 15: Topographic
-              "IRIS",       // 16: Iris
-              "RADAR",      // 17: Radar Sweep
-              "VINYL",      // 18: Vinyl DJ
-              "ECLIPSE"     // 19: Eclipse Corona
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return motifs[t];
-          text_color: !lambda |-
-            static const uint32_t colors[] = {
-              0x333333, 0xFF6B35, 0x4CAF50, 0x333333, 0xFFB000,
-              0x661100, 0x333333, 0x4FC3F7, 0xFFB000, 0x333333,
-              0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
-              0x555555, 0xFFB000, 0xFFB000, 0xFFB000, 0xFF8C00
-            };
-            int t = id(active_theme);
-            if (t < 0) t = 0; if (t > 19) t = 19;
-            return lv_color_hex(colors[t]);
-
-      - logger.log:
-          format: "Theme rendered: %d"
-          args: ['id(active_theme)']
-
-  # =========================================================================
-  # UI UPDATE SCRIPTS
-  # =========================================================================
   - id: update_page_indicator
     mode: single
     then:
@@ -2195,7 +2187,18 @@ script:
 # ---------------------------------------------------------------------------
 # Home Assistant state import
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# HA Bridge Entities
+# ---------------------------------------------------------------------------
 text_sensor:
+  - platform: template
+    name: "VelaDial Door Rotary Requested Action"
+    id: requested_action
+
+
+
+  # Added text sensors to main block
   - platform: homeassistant
     id: light_state_text
     entity_id: ${light_group}
@@ -2209,28 +2212,45 @@ text_sensor:
             }
         - script.execute: update_led_ring
         - lvgl.label.update:
-            id: power_icon_label
-            text: !lambda |-
-              if (id(lights_on)) return "ON";
-              return "OFF";
+            id: minimal_icon
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
             text_color: !lambda |-
-              if (id(lights_on)) {
-                static const uint32_t colors[] = {
-                  0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000,
-                  0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000,
-                  0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080,
-                  0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000
-                };
-                int t = id(active_theme);
-                if (t < 0) t = 0; if (t > 19) t = 19;
-                return lv_color_hex(colors[t]);
-              }
-              return lv_color_hex(0x666666);
+              if (!id(lights_on)) return lv_color_hex(0x666666);
+              static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+              int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
+        - lvgl.label.update:
+            id: smartknob_icon
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text_color: !lambda |-
+              if (!id(lights_on)) return lv_color_hex(0x666666);
+              static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+              int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
+        - lvgl.label.update:
+            id: power_large_icon
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text_color: !lambda |-
+              if (!id(lights_on)) return lv_color_hex(0x666666);
+              static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+              int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
+        - lvgl.label.update:
+            id: presetring_icon
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text_color: !lambda |-
+              if (!id(lights_on)) return lv_color_hex(0x666666);
+              static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+              int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
+        - lvgl.label.update:
+            id: eclipse_icon
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text_color: !lambda |-
+              if (!id(lights_on)) return lv_color_hex(0x666666);
+              static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
+              int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
         - lvgl.label.update:
             id: power_status_label
             text: !lambda |-
-              if (id(lights_on)) return "Bedroom Group ON";
-              return "Bedroom Group OFF";
+              if (id(lights_on)) return std::string("Bedroom Group ON");
+              return std::string("Bedroom Group OFF");
             text_color: !lambda |-
               if (id(lights_on)) return lv_color_hex(0x4CAF50);
               return lv_color_hex(0xAAAAAA);
