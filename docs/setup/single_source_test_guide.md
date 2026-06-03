@@ -1,20 +1,20 @@
-# VelaDial Door-Side — Single-Source Test Guide
+# VelaDial Door-Side Rotary — Single Source Test Guide
 
-## Hardware
-
-- **Device**: ELECROW CrowPanel 1.28" ESP32-S3 Rotary Touch Display (240×240)
-- **Firmware**: `esphome/door_side_rotary.yaml`
-- **Target entity**: `light.bedroom_group` (5 Surplife RGBCW bulbs)
-- **Branch**: `firmware/fix-ha-toggle-theme-selector-v2`
+**Firmware branch:** `firmware/fix-real-ha-control-and-themeos-visuals`
+**Primary file:** `esphome/door_side_rotary.yaml`
+**Target entity:** `light.bedroom_group` (5 Surplife RGBCW bulbs)
 
 ---
 
 ## Prerequisites
 
-1. Home Assistant running and accessible at `homeassistant.local:8123`
-2. `light.bedroom_group` exists (Settings → Helpers → Light Group → "Bedroom Group" with all 5 bulbs)
-3. ESPHome Add-on or CLI installed
-4. USB-C cable connected to CrowPanel
+Before flashing, ensure:
+
+1. `light.bedroom_group` exists in Home Assistant (Settings → Helpers → Light Group → "Bedroom Group" with all 5 bulbs)
+2. All 5 Surplife bulbs are members of the group
+3. Manual toggle works: Developer Tools → Actions → `light.toggle` → `light.bedroom_group`
+4. **CRITICAL**: ESPHome device has "Allow the device to perform Home Assistant actions" enabled:
+   - Settings → Devices & Services → ESPHome → CONFIGURE (next to veladial-door-rotary) → Check the box → Submit
 
 ---
 
@@ -26,120 +26,201 @@ esphome run esphome/door_side_rotary.yaml
 
 ---
 
-## 11-Step Test Sequence
+## 12-Step Test Sequence
 
-### Step 1: Verify `light.bedroom_group` exists in HA
+### Step 1: Manual HA Toggle (baseline)
 
-- Go to **Developer Tools → States**
-- Search: `light.bedroom_group`
-- Confirm it shows state `on` or `off` with 5 member entities
+In Home Assistant Developer Tools → Actions:
 
-### Step 2: Manually toggle `light.bedroom_group` in HA
-
-- Go to **Developer Tools → Actions**
-- Action: `light.toggle`
-- Target: `light.bedroom_group`
-- Click **Perform action**
-- Confirm bulbs physically turn on/off
-
-### Step 3: Flash firmware
-
-```bash
-esphome run esphome/door_side_rotary.yaml
+```yaml
+action: light.toggle
+target:
+  entity_id: light.bedroom_group
 ```
 
-- Wait for boot splash ("VELADIAL") to appear
-- Wait 3 seconds for splash to hide and Power page to show
+**Expected:** Bulbs physically toggle ON/OFF.
+**If this fails:** Problem is HA/bulb integration, not VelaDial firmware.
 
-### Step 4: Confirm Power page says "Bedroom Group"
+---
 
-- Power page must show:
-  - **"Bedroom Group"** near top (target label)
-  - **"OFF"** or **"ON"** in center (state)
-  - **"T01 Minimal"** at bottom (theme label)
-  - Ice-blue decorative ring
+### Step 2: HA Diagnostic Button — Turn ON
 
-### Step 5: Press HA diagnostic button
+In Home Assistant → VelaDial Door Rotary device → press **"VelaDial Turn ON Bedroom Group"** button.
 
-- In HA, go to the VelaDial device page or Developer Tools → Actions
-- Press **"VelaDial Test Toggle Bedroom Group"** button
-- Confirm bulbs toggle
-- Check ESPHome logs for: `HA BUTTON: VelaDial Test Toggle Bedroom Group pressed`
-- Check logs for: `TOGGLE BEDROOM GROUP: command sent to light.bedroom_group`
+**Expected:**
+- ESPHome log: `TURN ON: HA confirmed SUCCESS`
+- Screen shows: `ON OK` in green
+- Bulbs physically turn ON
 
-**If this fails**: The bug is HA action syntax. Check API connection.
-**If this works but Step 6/7 fail**: The bug is input handling (knob/touch).
+**If bulbs don't turn on but log says SUCCESS:** HA permission issue. Go back to Prerequisites step 4.
+**If log says ERROR:** HA denied the action. Enable "Allow device to perform Home Assistant actions."
 
-### Step 6: Short-press knob on Power page
+---
 
-- Give a quick press (<600ms) on the physical knob
-- Confirm bulbs toggle
-- Check logs for: `KNOB SHORT PRESS POWER: toggle bedroom group`
-- Check logs for: `TOGGLE BEDROOM GROUP: command sent to light.bedroom_group`
-- Screen should briefly show "Toggling..." then update to ON/OFF
+### Step 3: Confirm Bulbs ON
 
-### Step 7: Tap Power page center (touch)
+Visually verify all 5 bedroom bulbs are illuminated.
 
-- Tap the center circular area of the screen
-- Confirm bulbs toggle
-- Check logs for: `TOUCH POWER TAP: toggle bedroom group`
-- Check logs for: `TOGGLE BEDROOM GROUP: command sent to light.bedroom_group`
+---
 
-### Step 8: Long-press knob to open Theme Selector
+### Step 4: HA Diagnostic Button — Turn OFF
 
-- Press and hold knob for >1.5 seconds
-- Theme Selector page should appear showing:
-  - **"THEME SELECT"** header
-  - **"01/20"** (or current theme number)
-  - Theme name (e.g., "Minimal")
-  - Large color preview circle
-  - **"Rotate Browse | Press Apply"** instruction
+Press **"VelaDial Turn OFF Bedroom Group"** button.
 
-### Step 9: Rotate knob and confirm visible changes
+**Expected:**
+- ESPHome log: `TURN OFF: HA confirmed SUCCESS`
+- Screen shows: `OFF OK` in green
+- Bulbs physically turn OFF
 
-- Rotate knob clockwise/counterclockwise
-- Confirm these change visibly with each click:
-  - Theme number (01/20 → 02/20 → etc.)
-  - Theme name (Minimal → SmartKnob → Power → etc.)
-  - Preview circle color
-  - Outer ring color
+---
 
-### Step 10: Press knob to apply theme — confirm NO light toggle
+### Step 5: Confirm Bulbs OFF
 
-- Press knob while in Theme Selector
-- Confirm:
-  - Screen shows **"APPLIED"** in green
-  - Shows applied theme name in green
-  - Returns to Power page after ~800ms
-  - Power page shows new theme label (e.g., "T04 Simple")
-  - **Lights did NOT toggle** (critical — no fall-through)
-- Check logs for: `SHORT PRESS: applying theme from selector (no fall-through)`
-- Check logs do NOT show: `KNOB SHORT PRESS POWER: toggle bedroom group`
+Visually verify all 5 bedroom bulbs are off.
 
-### Step 11: Reboot and confirm theme persists
+---
 
-- Power cycle the device (unplug USB, replug)
-- After boot, confirm Power page shows the theme you selected (not T01)
-- Theme index is stored with `restore_value: yes`
+### Step 6: HA Diagnostic Button — Toggle
+
+Press **"VelaDial Test Toggle Bedroom Group"** button.
+
+**Expected:**
+- ESPHome log: `TOGGLE BEDROOM GROUP: HA confirmed SUCCESS`
+- Screen shows: `OK` in green, then state updates
+- Bulbs physically toggle
+
+---
+
+### Step 7: Confirm Toggle Works
+
+Verify bulbs changed state from Step 5.
+
+---
+
+### Step 8: Knob Short Press (Power Page)
+
+Only test this AFTER Steps 2-7 pass. On the VelaDial device:
+
+1. Ensure you're on the Power page (page 0, shows "OFF" or "ON")
+2. Short-press the rotary knob (<600ms)
+
+**Expected:**
+- ESPHome log: `KNOB SHORT PRESS POWER: toggle bedroom group`
+- ESPHome log: `TOGGLE BEDROOM GROUP: HA confirmed SUCCESS`
+- Screen shows: `Sending...` → `OK` → state updates
+- Bulbs physically toggle
+
+**If this fails but Step 6 passed:** Input routing issue (report logs).
+
+---
+
+### Step 9: Touch Tap (Power Page)
+
+Tap the center of the round display (the power button area).
+
+**Expected:**
+- ESPHome log: `TOUCH POWER TAP: toggle bedroom group`
+- Same toggle behavior as Step 8
+- Bulbs physically toggle
+
+**If this fails but Step 8 passed:** Touch target area issue (report touch coordinates from log).
+
+---
+
+### Step 10: Long-Press Theme Selector
+
+Long-press the rotary knob (>1.5 seconds).
+
+**Expected:**
+- ESPHome log: `THEME SELECTOR: activated`
+- Screen transitions to full-screen Theme Selector page:
+  - "THEME SELECT" header
+  - "01/20" index
+  - Large color-filled circle
+  - Theme name inside circle
+  - Color ring around circle
+  - "Rotate Browse | Press Apply" instruction
+
+---
+
+### Step 11: Rotate Through Themes
+
+Rotate the knob clockwise/counterclockwise while in Theme Selector.
+
+**Expected:**
+- Index changes: "02/20", "03/20", etc.
+- Circle color changes per theme
+- Ring color changes per theme
+- Theme name updates: "SmartKnob", "Power", "Simple", etc.
+- Each rotation is immediately visible
+
+---
+
+### Step 12: Apply Theme and Verify Power Page
+
+Press the knob to apply a theme (e.g., select "02 SmartKnob").
+
+**Expected:**
+- "APPLIED" shows briefly in green
+- Screen transitions back to Power page
+- Power page now shows:
+  - Theme-specific arc/ring style (e.g., thick partial arc for SmartKnob)
+  - Theme-specific color (orange for SmartKnob)
+  - Motif text (e.g., "~ ARC ~" for SmartKnob)
+  - "T02 SmartKnob" at bottom in theme color
+  - "Bedroom Group" target label
+  - "Press/Tap Toggle" control hint
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely Cause | Fix |
-|---------|-------------|-----|
-| "WAIT HA" on screen | API not connected yet | Wait 5-10s after boot for WiFi+API |
-| Knob press does nothing | Screen asleep | First press wakes, second press toggles |
-| Touch logs but no toggle | `touch_woke_this_cycle` guard | First touch wakes, second touch toggles |
-| Theme apply also toggles lights | Fall-through bug (should be fixed) | Check logs for both messages |
-| "TOGGLE BEDROOM GROUP: requested" but no bulb change | API connected but entity missing | Verify `light.bedroom_group` in HA |
+### "HA DENIED" on screen / "HA returned ERROR" in logs
+
+The device doesn't have permission to call HA actions.
+
+**Fix:** Settings → Devices & Services → ESPHome → CONFIGURE (next to veladial-door-rotary) → Enable "Allow the device to perform Home Assistant actions" → Submit
+
+### "WAIT HA" on screen
+
+API not connected. Check:
+- Wi-Fi connection (device should show IP in logs)
+- ESPHome integration in HA (device should be "Online")
+- Encryption key matches between firmware and HA
+
+### "Sending..." stays forever (no OK/ERROR)
+
+The `capture_response` callback didn't fire. This may indicate:
+- ESPHome version mismatch (needs 2024.6+ for capture_response)
+- Network timeout between device and HA
+
+### Knob press toggles but touch doesn't
+
+Touch coordinates may be offset. Check logs for `TOUCH: x=, y=` values.
+The power button is a 120x120px circle at center (120,120). Touch must land within ~60px of center.
+
+### Theme changes color but no structural difference
+
+Only 5 theme groups have structural layout changes:
+- Group A (T01,T04,T07,T10): Minimal — thin ring, small button
+- Group B (T02,T08,T17,T18): SmartKnob — thick partial arc + secondary arc visible
+- Group C (T03,T11,T12): Power — no outer arc, inner glow ring, thick button border
+- Group D (T06): Night — very thin border, deep red
+- Group E (T05,T13-T16,T19,T20): Eclipse — both secondary arc + inner glow ring visible
+
+All 20 themes have unique: color, motif text, theme name, arc color, border color.
 
 ---
 
-## Design Notes
+## What Each Diagnostic Button Tests
 
-- This is a **20-theme selectable foundation**
-- Visual differentiation is **color/name/ring/LED** based for now
-- Full per-theme rich layouts can be refined after hardware validation
-- Every theme visibly changes: color, name, preview circle, LED ring color
-- All themes control the same target: `light.bedroom_group`
+| Button | Tests | Isolates |
+|--------|-------|----------|
+| VelaDial Turn ON Bedroom Group | `light.turn_on` syntax | HA permission + entity existence |
+| VelaDial Turn OFF Bedroom Group | `light.turn_off` syntax | Same as above |
+| VelaDial Test Toggle Bedroom Group | `light.toggle` syntax | Toggle specifically |
+| VelaDial Brightness 50 Bedroom Group | `light.turn_on` + `brightness_pct` | Data parameter passing |
+
+If ALL 4 buttons fail → HA permission not enabled.
+If buttons work but knob/touch don't → Input routing bug in firmware.
+If buttons work AND knob/touch work → Full success.
