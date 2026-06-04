@@ -57,6 +57,7 @@ esphome:
       # and BEFORE LVGL renders. This matches the official Elecrow Lesson02.
       # =====================================================================
       # Step 1: Force backlight ON immediately (raw output, no transition)
+      - logger.log: "VelaDial control mode: BRIDGE_PRIMARY"
       - logger.log: "BOOT: Backlight ON (GPIO46 raw output — matches working debug)"
       - output.turn_on: gpio_backlight_pwm
       - delay: 200ms
@@ -1685,56 +1686,64 @@ script:
   - id: send_deterministic_power
     mode: single
     then:
+      - lambda: |-
+          int seq = id(toggle_sequence_id);
+          id(expected_power_state) = !id(lights_on);
+          const char* action_str = id(lights_on) ? "TURN_OFF" : "TURN_ON";
+
+          id(bridge_request_counter) += 1;
+
+          ESP_LOGI("ha_cmd", "BRIDGE REQUEST seq=%d action=%s counter=%d",
+                   seq, action_str, id(bridge_request_counter));
+
+          id(requested_action).publish_state(action_str);
+          id(request_counter).publish_state(id(bridge_request_counter));
+
+          char last_req[32];
+          snprintf(last_req, sizeof(last_req), "%s #%d", action_str, id(bridge_request_counter));
+          id(last_bridge_request).publish_state(last_req);
+
+      - lvgl.label.update:
+          id: power_status_label
+          text: !lambda 'return std::string(id(lights_on) ? "Bridge Sent: Turn Off" : "Bridge Sent: Turn On").c_str();'
+          text_color: 0xFFB300
+
+      - delay: 2000ms
+
+      - lambda: |-
+          bool expected_on = id(expected_power_state);
+          bool current = id(lights_on);
+          ESP_LOGI("ha_verify", "VERIFY seq=%d: state_now=%d expected=%d", id(toggle_sequence_id), current, expected_on);
+
       - if:
           condition:
-            binary_sensor.is_off: api_connected
+            lambda: 'return id(lights_on) != id(expected_power_state);'
           then:
-            - logger.log: "POWER CMD: HA API NOT connected"
             - lvgl.label.update:
                 id: power_status_label
-                text: "ENABLE HA ACTIONS"
+                text: "CHECK HA BRIDGE"
                 text_color: 0xFF4444
           else:
-            - lambda: |-
-                int seq = id(toggle_sequence_id);
-                id(expected_power_state) = !id(lights_on);
-                ESP_LOGI("ha_cmd", "BRIDGE REQUEST seq=%d: lights_on=%d -> requesting %s",
-                         seq, id(lights_on), id(lights_on) ? "TURN_OFF" : "TURN_ON");
             - lvgl.label.update:
                 id: power_status_label
-                text: "Bridge Sent"
-                text_color: 0xFFB300
-            - lambda: |-
-                id(requested_action).publish_state(id(lights_on) ? "TURN_OFF" : "TURN_ON");
-                id(bridge_request_counter) += 1;
-                id(request_counter).publish_state(id(bridge_request_counter));
-            - delay: 1500ms
-            - lambda: |-
-                bool expected_on = id(expected_power_state);
-                bool current = id(lights_on);
-                ESP_LOGI("ha_verify", "VERIFY seq=%d: state_now=%d expected=%d", id(toggle_sequence_id), current, expected_on);
-            - if:
-                condition:
-                  lambda: 'return id(lights_on) != id(expected_power_state);'
-                then:
-                  - lvgl.label.update:
-                      id: power_status_label
-                      text: "BRIDGE FAIL"
-                      text_color: 0xFF4444
-                else:
-                  - lvgl.label.update:
-                      id: power_status_label
-                      text: "Ready"
-                      text_color: 0x4CAF50
+                text: "Ready"
+                text_color: 0x4CAF50
 
   - id: send_brightness
     mode: single
     then:
       - lambda: |-
+          id(bridge_request_counter) += 1;
+          ESP_LOGI("ha_cmd", "BRIDGE REQUEST seq=%d action=SET_BRIGHTNESS counter=%d",
+                   id(toggle_sequence_id), id(bridge_request_counter));
+
           id(requested_brightness).publish_state(id(brightness_pct));
           id(requested_action).publish_state("SET_BRIGHTNESS");
-          id(bridge_request_counter) += 1;
           id(request_counter).publish_state(id(bridge_request_counter));
+
+          char last_req[32];
+          snprintf(last_req, sizeof(last_req), "BRIGHTNESS #%d", id(bridge_request_counter));
+          id(last_bridge_request).publish_state(last_req);
 
   - id: send_brightness_debounced
     mode: restart
@@ -1749,10 +1758,18 @@ script:
     then:
       - lambda: 'id(active_preset) = preset_index;'
       - lambda: |-
+          id(bridge_request_counter) += 1;
+          ESP_LOGI("ha_cmd", "BRIDGE REQUEST seq=%d action=APPLY_PRESET counter=%d",
+                   id(toggle_sequence_id), id(bridge_request_counter));
+
           id(requested_preset).publish_state(preset_index);
           id(requested_action).publish_state("APPLY_PRESET");
-          id(bridge_request_counter) += 1;
           id(request_counter).publish_state(id(bridge_request_counter));
+
+          char last_req[32];
+          snprintf(last_req, sizeof(last_req), "PRESET_%d #%d", preset_index, id(bridge_request_counter));
+          id(last_bridge_request).publish_state(last_req);
+
       - script.execute: update_preset_buttons
       - script.execute: update_led_ring
 
@@ -1989,6 +2006,10 @@ text_sensor:
     name: "VelaDial Door Rotary Requested Action"
     id: requested_action
 
+  - platform: template
+    name: "VelaDial Last Bridge Request"
+    id: last_bridge_request
+
 
 
   # Added text sensors to main block
@@ -2006,35 +2027,35 @@ text_sensor:
         - script.execute: update_led_ring
         - lvgl.label.update:
             id: minimal_icon
-            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF").c_str();'
             text_color: !lambda |-
               if (!id(lights_on)) return lv_color_hex(0x666666);
               static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
               int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
         - lvgl.label.update:
             id: smartknob_icon
-            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF").c_str();'
             text_color: !lambda |-
               if (!id(lights_on)) return lv_color_hex(0x666666);
               static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
               int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
         - lvgl.label.update:
             id: power_large_icon
-            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF").c_str();'
             text_color: !lambda |-
               if (!id(lights_on)) return lv_color_hex(0x666666);
               static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
               int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
         - lvgl.label.update:
             id: presetring_icon
-            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF").c_str();'
             text_color: !lambda |-
               if (!id(lights_on)) return lv_color_hex(0x666666);
               static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
               int t = id(active_theme); if(t<0)t=0; if(t>19)t=19; return lv_color_hex(c[t]);
         - lvgl.label.update:
             id: eclipse_icon
-            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF");'
+            text: !lambda 'return std::string(id(lights_on) ? "ON" : "OFF").c_str();'
             text_color: !lambda |-
               if (!id(lights_on)) return lv_color_hex(0x666666);
               static const uint32_t c[] = {0x4FC3F7, 0xFF6B35, 0x4CAF50, 0xFFB74D, 0xFFB000, 0xFF4400, 0xFFB000, 0x4FC3F7, 0xFFB000, 0xFFB000, 0xFFB000, 0x4CAF50, 0xE8E0D0, 0xFFB000, 0xFFD080, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000, 0xFFB000};
@@ -2042,8 +2063,8 @@ text_sensor:
         - lvgl.label.update:
             id: power_status_label
             text: !lambda |-
-              if (id(lights_on)) return std::string("Bedroom Group ON");
-              return std::string("Bedroom Group OFF");
+              if (id(lights_on)) return std::string("Bedroom Group ON").c_str();
+              return std::string("Bedroom Group OFF").c_str();
             text_color: !lambda |-
               if (id(lights_on)) return lv_color_hex(0x4CAF50);
               return lv_color_hex(0xAAAAAA);
@@ -2079,17 +2100,13 @@ button:
     on_press:
       - logger.log: "HA BUTTON: Bridge Request Toggle"
       - lambda: |-
-          id(requested_action).publish_state("TOGGLE");
           id(bridge_request_counter) += 1;
+          id(requested_action).publish_state("TOGGLE");
           id(request_counter).publish_state(id(bridge_request_counter));
 
-  - platform: template
-    name: "Active Theme Report"
-    id: active_theme_btn
-    on_press:
-      - logger.log:
-          format: "Active theme: %d"
-          args: ['id(active_theme)']
+          char last_req[32];
+          snprintf(last_req, sizeof(last_req), "TOGGLE #%d", id(bridge_request_counter));
+          id(last_bridge_request).publish_state(last_req);
 
   - platform: template
     name: "VelaDial Bridge Request Turn ON"
@@ -2097,9 +2114,13 @@ button:
     on_press:
       - logger.log: "HA BUTTON: Bridge Request Turn ON"
       - lambda: |-
-          id(requested_action).publish_state("TURN_ON");
           id(bridge_request_counter) += 1;
+          id(requested_action).publish_state("TURN_ON");
           id(request_counter).publish_state(id(bridge_request_counter));
+
+          char last_req[32];
+          snprintf(last_req, sizeof(last_req), "TURN_ON #%d", id(bridge_request_counter));
+          id(last_bridge_request).publish_state(last_req);
 
   - platform: template
     name: "VelaDial Bridge Request Turn OFF"
@@ -2107,9 +2128,13 @@ button:
     on_press:
       - logger.log: "HA BUTTON: Bridge Request Turn OFF"
       - lambda: |-
-          id(requested_action).publish_state("TURN_OFF");
           id(bridge_request_counter) += 1;
+          id(requested_action).publish_state("TURN_OFF");
           id(request_counter).publish_state(id(bridge_request_counter));
+
+          char last_req[32];
+          snprintf(last_req, sizeof(last_req), "TURN_OFF #%d", id(bridge_request_counter));
+          id(last_bridge_request).publish_state(last_req);
 
   - platform: template
     name: "VelaDial Bridge Request Brightness 50"
@@ -2117,7 +2142,31 @@ button:
     on_press:
       - logger.log: "HA BUTTON: Bridge Request Brightness 50"
       - lambda: |-
+          id(bridge_request_counter) += 1;
           id(requested_brightness).publish_state(50);
           id(requested_action).publish_state("SET_BRIGHTNESS");
-          id(bridge_request_counter) += 1;
           id(request_counter).publish_state(id(bridge_request_counter));
+
+          char last_req[32];
+          snprintf(last_req, sizeof(last_req), "BRIGHTNESS #%d", id(bridge_request_counter));
+          id(last_bridge_request).publish_state(last_req);
+
+  - platform: template
+    name: "VelaDial Direct Diagnostic Turn ON"
+    id: direct_test_turn_on_btn
+    on_press:
+      - logger.log: "DIRECT HA BUTTON: Turn ON pressed"
+      - homeassistant.action:
+          action: light.turn_on
+          data:
+            entity_id: ${light_group}
+
+  - platform: template
+    name: "VelaDial Direct Diagnostic Turn OFF"
+    id: direct_test_turn_off_btn
+    on_press:
+      - logger.log: "DIRECT HA BUTTON: Turn OFF pressed"
+      - homeassistant.action:
+          action: light.turn_off
+          data:
+            entity_id: ${light_group}
