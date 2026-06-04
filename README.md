@@ -40,7 +40,7 @@ The door-side display has exactly 3 primary control pages, plus a hidden device-
 3. Presets
 4. Theme Selector (hidden, accessed via long-press >1.5s)
 
-The firmware implements a **20 selectable theme foundation mapping to 5 real layout families** that can be switched on-device without reflashing. Temperature/humidity data is secondary and does not appear on the main pages.
+The firmware implements a **Theme foundation (20 selectable skins / 5 future layout families)** that can be switched on-device without reflashing. Temperature/humidity data is secondary and does not appear on the main pages.
 
 ## Repository layout
 

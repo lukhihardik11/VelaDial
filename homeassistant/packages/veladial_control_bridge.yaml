@@ -10,7 +10,7 @@
 
 automation:
   - id: 'veladial_door_rotary_control_bridge'
-    alias: 'VelaDial Door Rotary Control Bridge'
+    alias: 'VelaDial Bridge - Execute Bedroom Group Request'
     description: 'Executes light commands requested by VelaDial Door Rotary'
     mode: queued
     trigger:
@@ -24,6 +24,10 @@ automation:
           requested_action: "{{ states('sensor.veladial_door_rotary_requested_action') }}"
           brightness_pct: "{{ states('sensor.veladial_door_rotary_requested_brightness') | int(50) }}"
           preset_index: "{{ states('sensor.veladial_door_rotary_requested_preset') | int(0) }}"
+      - service: system_log.write
+        data:
+          message: "VelaDial Bridge: Request triggered. Action={{ requested_action }}, Counter={{ trigger.to_state.state }}"
+          level: info
       - choose:
           - conditions:
               - condition: template

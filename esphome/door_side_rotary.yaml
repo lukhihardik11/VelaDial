@@ -37,7 +37,6 @@ substitutions:
   device_name: veladial-door-rotary
   friendly_name: VelaDial Door Rotary
   light_group: light.bedroom_group
-  use_ha_bridge: "false" # Set to "true" if direct HA actions fail
 
 # ---------------------------------------------------------------------------
 # ESPHome core
@@ -560,38 +559,31 @@ lvgl:
         - label:
             id: connection_label
             align: TOP_MID
-            y: 15
+            y: 10
             text_font: roboto16
-            text_color: 0x666666
-            text: ""
+            text_color: 0x888888
+            text: "Bedroom"
         - label:
             id: pw_target_label
             align: TOP_MID
-            y: 35
+            y: 30
             text_font: roboto16
-            text_color: 0xAAAAAA
+            text_color: 0x666666
             text: "Bedroom Group"
-        - label:
-            id: pw_control_hint
-            align: BOTTOM_MID
-            y: -12
-            text_font: roboto16
-            text_color: 0x555555
-            text: "Press/Tap"
-        - label:
-            id: pw_theme_name
-            align: BOTTOM_MID
-            y: -32
-            text_font: roboto24
-            text_color: 0x888888
-            text: "T01 Minimal"
         - label:
             id: power_status_label
             align: BOTTOM_MID
-            y: -65
+            y: -35
             text_font: roboto16
             text_color: 0x888888
-            text: ""
+            text: "Ready"
+        - label:
+            id: pw_theme_name
+            align: BOTTOM_MID
+            y: -15
+            text_font: roboto16
+            text_color: 0x555555
+            text: "T01 Minimal"
 
         # ==========================================
         # LAYOUT 0: Minimal Thermostat
@@ -1135,10 +1127,10 @@ lvgl:
         - label:
             id: ts_header
             align: TOP_MID
-            y: 22
+            y: 35
             text_font: roboto16
             text_color: 0x888888
-            text: "THEME SELECT"
+            text: "THEME"
 
         # Theme index: "01/20"
         - label:
@@ -1162,10 +1154,10 @@ lvgl:
         - label:
             id: ts_instruction
             align: BOTTOM_MID
-            y: -22
+            y: -35
             text_font: roboto16
             text_color: 0x666666
-            text: "Rotate Browse | Press Apply"
+            text: "Rotate | Press"
 
   # LVGL idle handling — guarded by boot_guard_active
   on_idle:
@@ -1412,11 +1404,11 @@ script:
       # Reset header for next time
       - lvgl.label.update:
           id: ts_header
-          text: "THEME SELECT"
+          text: "THEME"
           text_color: 0x888888
       - lvgl.label.update:
           id: ts_instruction
-          text: "Rotate Browse | Press Apply"
+          text: "Rotate | Press"
           text_color: 0x666666
       # Now transition to power page
       - lvgl.page.show:
@@ -1706,48 +1698,17 @@ script:
             - lambda: |-
                 int seq = id(toggle_sequence_id);
                 id(expected_power_state) = !id(lights_on);
-                ESP_LOGI("ha_cmd", "POWER CMD seq=%d: lights_on=%d -> sending %s",
+                ESP_LOGI("ha_cmd", "BRIDGE REQUEST seq=%d: lights_on=%d -> requesting %s",
                          seq, id(lights_on), id(lights_on) ? "TURN_OFF" : "TURN_ON");
             - lvgl.label.update:
                 id: power_status_label
-                text: !lambda |-
-                  if (id(lights_on)) return std::string("Turning OFF...").c_str();
-                  return std::string("Turning ON...").c_str();
+                text: "Bridge Sent"
                 text_color: 0xFFB300
-            - if:
-                condition:
-                  lambda: 'return id(lights_on);'
-                then:
-                  - if:
-                      condition:
-                        lambda: 'return "${use_ha_bridge}" == "true";'
-                      then:
-                        - lambda: |-
-                            id(requested_action).publish_state("TURN_OFF");
-                            id(bridge_request_counter) += 1;
-                            id(request_counter).publish_state(id(bridge_request_counter));
-                      else:
-                        - homeassistant.action:
-                            action: light.turn_off
-                            data:
-                              entity_id: ${light_group}
-                else:
-                  - if:
-                      condition:
-                        lambda: 'return "${use_ha_bridge}" == "true";'
-                      then:
-                        - lambda: |-
-                            id(requested_action).publish_state("TURN_ON");
-                            id(bridge_request_counter) += 1;
-                            id(request_counter).publish_state(id(bridge_request_counter));
-                      else:
-                        - homeassistant.action:
-                            action: light.turn_on
-                            data:
-                              entity_id: ${light_group}
             - lambda: |-
-                ESP_LOGI("ha_cmd", "POWER CMD dispatched to ${light_group} (seq=%d)", id(toggle_sequence_id));
-            - delay: 1000ms
+                id(requested_action).publish_state(id(lights_on) ? "TURN_OFF" : "TURN_ON");
+                id(bridge_request_counter) += 1;
+                id(request_counter).publish_state(id(bridge_request_counter));
+            - delay: 1500ms
             - lambda: |-
                 bool expected_on = id(expected_power_state);
                 bool current = id(lights_on);
@@ -1758,145 +1719,22 @@ script:
                 then:
                   - lvgl.label.update:
                       id: power_status_label
-                      text: !lambda 'return std::string("${use_ha_bridge}" == "true" ? "CHECK HA BRIDGE" : "HA VERIFY FAIL").c_str();'
+                      text: "BRIDGE FAIL"
                       text_color: 0xFF4444
                 else:
                   - lvgl.label.update:
                       id: power_status_label
-                      text: !lambda 'return std::string(id(lights_on) ? "Bedroom Group ON" : "Bedroom Group OFF").c_str();'
+                      text: "Ready"
                       text_color: 0x4CAF50
-  # Legacy toggle script — kept for diagnostic button only
-  - id: toggle_bedroom_group
-    mode: single
-    then:
-      - logger.log: "TOGGLE BEDROOM GROUP (diagnostic): requested"
-      - if:
-          condition:
-            binary_sensor.is_off: api_connected
-          then:
-            - lvgl.label.update:
-                id: power_status_label
-                text: "ENABLE HA ACTIONS"
-                text_color: 0xFF4444
-          else:
-            - homeassistant.action:
-                action: light.toggle
-                data:
-                  entity_id: ${light_group}
-            - logger.log: "TOGGLE (diagnostic): command dispatched"
-
-  - id: turn_on_bedroom_group
-    mode: single
-    then:
-      - logger.log: "TURN ON BEDROOM GROUP: requested"
-      - if:
-          condition:
-            binary_sensor.is_off: api_connected
-          then:
-            - lvgl.label.update:
-                id: power_status_label
-                text: "ENABLE HA ACTIONS"
-                text_color: 0xFF4444
-          else:
-            - homeassistant.action:
-                action: light.turn_on
-                data:
-                  entity_id: ${light_group}
-                capture_response: true
-                on_success:
-                  - logger.log: "TURN ON: HA confirmed SUCCESS"
-                  - lvgl.label.update:
-                      id: power_status_label
-                      text: "ON OK"
-                      text_color: 0x4CAF50
-                on_error:
-                  - logger.log: "TURN ON: HA returned ERROR"
-                  - lvgl.label.update:
-                      id: power_status_label
-                      text: "HA DENIED"
-                      text_color: 0xFF4444
-
-  - id: turn_off_bedroom_group
-    mode: single
-    then:
-      - logger.log: "TURN OFF BEDROOM GROUP: requested"
-      - if:
-          condition:
-            binary_sensor.is_off: api_connected
-          then:
-            - lvgl.label.update:
-                id: power_status_label
-                text: "ENABLE HA ACTIONS"
-                text_color: 0xFF4444
-          else:
-            - homeassistant.action:
-                action: light.turn_off
-                data:
-                  entity_id: ${light_group}
-                capture_response: true
-                on_success:
-                  - logger.log: "TURN OFF: HA confirmed SUCCESS"
-                  - lvgl.label.update:
-                      id: power_status_label
-                      text: "OFF OK"
-                      text_color: 0x4CAF50
-                on_error:
-                  - logger.log: "TURN OFF: HA returned ERROR"
-                  - lvgl.label.update:
-                      id: power_status_label
-                      text: "HA DENIED"
-                      text_color: 0xFF4444
-
-  - id: set_brightness_50_bedroom_group
-    mode: single
-    then:
-      - logger.log: "SET BRIGHTNESS 50: requested"
-      - if:
-          condition:
-            binary_sensor.is_off: api_connected
-          then:
-            - lvgl.label.update:
-                id: power_status_label
-                text: "ENABLE HA ACTIONS"
-                text_color: 0xFF4444
-          else:
-            - homeassistant.action:
-                action: light.turn_on
-                data:
-                  entity_id: ${light_group}
-                  brightness_pct: "50"
-                capture_response: true
-                on_success:
-                  - logger.log: "BRIGHTNESS 50: HA confirmed SUCCESS"
-                  - lvgl.label.update:
-                      id: power_status_label
-                      text: "50% OK"
-                      text_color: 0x4CAF50
-                on_error:
-                  - logger.log: "BRIGHTNESS 50: HA returned ERROR"
-                  - lvgl.label.update:
-                      id: power_status_label
-                      text: "HA DENIED"
-                      text_color: 0xFF4444
 
   - id: send_brightness
     mode: single
     then:
-      - if:
-          condition:
-            lambda: 'return "${use_ha_bridge}" == "true";'
-          then:
-            - lambda: |-
-                  id(requested_brightness).publish_state(id(brightness_pct));
-                  id(requested_action).publish_state("SET_BRIGHTNESS");
-                  id(bridge_request_counter) += 1;
-                  id(request_counter).publish_state(id(bridge_request_counter));
-          else:
-            - homeassistant.action:
-                action: light.turn_on
-                data:
-                  entity_id: ${light_group}
-                  brightness_pct: !lambda 'return id(brightness_pct);'
+      - lambda: |-
+          id(requested_brightness).publish_state(id(brightness_pct));
+          id(requested_action).publish_state("SET_BRIGHTNESS");
+          id(bridge_request_counter) += 1;
+          id(request_counter).publish_state(id(bridge_request_counter));
 
   - id: send_brightness_debounced
     mode: restart
@@ -1910,56 +1748,11 @@ script:
       preset_index: int
     then:
       - lambda: 'id(active_preset) = preset_index;'
-      - if:
-          condition:
-            lambda: 'return "${use_ha_bridge}" == "true";'
-          then:
-            - lambda: |-
-                  id(requested_preset).publish_state(preset_index);
-                  id(requested_action).publish_state("APPLY_PRESET");
-                  id(bridge_request_counter) += 1;
-                  id(request_counter).publish_state(id(bridge_request_counter));
-          else:
-            - if:
-                condition:
-                  lambda: 'return preset_index == 0;'
-                then:
-                  - homeassistant.action:
-                      action: light.turn_on
-                      data:
-                        entity_id: ${light_group}
-                        color_temp: "370"
-                        brightness_pct: "100"
-            - if:
-                condition:
-                  lambda: 'return preset_index == 1;'
-                then:
-                  - homeassistant.action:
-                      action: light.turn_on
-                      data:
-                        entity_id: ${light_group}
-                        color_temp: "454"
-                        brightness_pct: "70"
-            - if:
-                condition:
-                  lambda: 'return preset_index == 2;'
-                then:
-                  - homeassistant.action:
-                      action: light.turn_on
-                      data:
-                        entity_id: ${light_group}
-                        color_temp: "250"
-                        brightness_pct: "100"
-            - if:
-                condition:
-                  lambda: 'return preset_index == 3;'
-                then:
-                  - homeassistant.action:
-                      action: light.turn_on
-                      data:
-                        entity_id: ${light_group}
-                        color_temp: "454"
-                        brightness_pct: "5"
+      - lambda: |-
+          id(requested_preset).publish_state(preset_index);
+          id(requested_action).publish_state("APPLY_PRESET");
+          id(bridge_request_counter) += 1;
+          id(request_counter).publish_state(id(bridge_request_counter));
       - script.execute: update_preset_buttons
       - script.execute: update_led_ring
 
@@ -2137,7 +1930,7 @@ script:
           then:
             - lvgl.label.update:
                 id: connection_label
-                text: ""
+                text: "Bedroom"
             - lvgl.label.update:
                 id: pw_target_label
                 text: "Bedroom Group"
@@ -2145,12 +1938,12 @@ script:
           else:
             - lvgl.label.update:
                 id: connection_label
-                text: "ENABLE HA ACTIONS"
+                text: "Bedroom"
                 text_color: 0xFF4444
             - lvgl.label.update:
                 id: pw_target_label
-                text: "Bedroom Group"
-                text_color: 0x666666
+                text: "ENABLE HA ACTIONS"
+                text_color: 0xFF4444
 
   - id: adaptive_backlight
     mode: single
@@ -2277,15 +2070,18 @@ text_sensor:
               return buf;
 
 # ---------------------------------------------------------------------------
-# HA Diagnostic Button — triggers toggle_bedroom_group from HA UI
+# HA Bridge Diagnostic Buttons
 # ---------------------------------------------------------------------------
 button:
   - platform: template
-    name: "VelaDial Test Toggle Bedroom Group"
+    name: "VelaDial Bridge Request Toggle"
     id: ha_test_toggle_btn
     on_press:
-      - logger.log: "HA BUTTON: VelaDial Test Toggle Bedroom Group pressed"
-      - script.execute: toggle_bedroom_group
+      - logger.log: "HA BUTTON: Bridge Request Toggle"
+      - lambda: |-
+          id(requested_action).publish_state("TOGGLE");
+          id(bridge_request_counter) += 1;
+          id(request_counter).publish_state(id(bridge_request_counter));
 
   - platform: template
     name: "Active Theme Report"
@@ -2296,22 +2092,32 @@ button:
           args: ['id(active_theme)']
 
   - platform: template
-    name: "VelaDial Turn ON Bedroom Group"
+    name: "VelaDial Bridge Request Turn ON"
     id: ha_test_turn_on_btn
     on_press:
-      - logger.log: "HA BUTTON: Turn ON pressed"
-      - script.execute: turn_on_bedroom_group
+      - logger.log: "HA BUTTON: Bridge Request Turn ON"
+      - lambda: |-
+          id(requested_action).publish_state("TURN_ON");
+          id(bridge_request_counter) += 1;
+          id(request_counter).publish_state(id(bridge_request_counter));
 
   - platform: template
-    name: "VelaDial Turn OFF Bedroom Group"
+    name: "VelaDial Bridge Request Turn OFF"
     id: ha_test_turn_off_btn
     on_press:
-      - logger.log: "HA BUTTON: Turn OFF pressed"
-      - script.execute: turn_off_bedroom_group
+      - logger.log: "HA BUTTON: Bridge Request Turn OFF"
+      - lambda: |-
+          id(requested_action).publish_state("TURN_OFF");
+          id(bridge_request_counter) += 1;
+          id(request_counter).publish_state(id(bridge_request_counter));
 
   - platform: template
-    name: "VelaDial Brightness 50 Bedroom Group"
+    name: "VelaDial Bridge Request Brightness 50"
     id: ha_test_brightness_btn
     on_press:
-      - logger.log: "HA BUTTON: Brightness 50 pressed"
-      - script.execute: set_brightness_50_bedroom_group
+      - logger.log: "HA BUTTON: Bridge Request Brightness 50"
+      - lambda: |-
+          id(requested_brightness).publish_state(50);
+          id(requested_action).publish_state("SET_BRIGHTNESS");
+          id(bridge_request_counter) += 1;
+          id(request_counter).publish_state(id(bridge_request_counter));
