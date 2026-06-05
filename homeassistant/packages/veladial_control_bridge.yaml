@@ -28,6 +28,11 @@ automation:
         data:
           message: "VelaDial Bridge: Request triggered. Action={{ requested_action }}, Counter={{ trigger.to_state.state }}"
           level: info
+      - action: persistent_notification.create
+        data:
+          title: "VelaDial Bridge Executed"
+          message: "Executed request #{{ trigger.to_state.state }} -> {{ requested_action }}"
+          notification_id: "veladial_bridge_status"
       - choose:
           - conditions:
               - condition: template

@@ -31,6 +31,8 @@ The door-side and bedside nodes use separate I2C buses. TSL2591 and VL53L4CD bot
 - VL53L4CD enables deliberate hand-hold nightlight behavior (stable hand at 5–10 cm for ~1.5 s).
 - APDS-9960 remains the directional gesture sensor for light on/off.
 
+**Note on Control Path:** The door-side display does *not* send direct `light.turn_on` commands to Home Assistant. To ensure maximum reliability across HA API updates, it publishes a template sensor `request_counter` and `requested_action`, which are executed by a tiny HA automation package included in the repo.
+
 ## Main UI
 
 The door-side display has exactly 3 primary control pages, plus a hidden device-level theme selector:
