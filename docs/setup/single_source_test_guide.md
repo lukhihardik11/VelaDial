@@ -55,7 +55,7 @@ If packages refuse to load, create this automation manually in the UI:
 *   **Trigger:** State -> Entity: `sensor.veladial_door_rotary_request_counter`
 *   **Condition:** Template -> `{{ trigger.to_state.state | int(0) > 0 }}`
 *   **Action:** Choose (Add 4 options):
-    *   Option 1: Template condition `{{ states('sensor.veladial_door_rotary_requested_action') == 'TURN_ON' }}` -> Call Service `light.turn_on` on `light.bedroom_group`
-    *   Option 2: Template condition `{{ states('sensor.veladial_door_rotary_requested_action') == 'TURN_OFF' }}` -> Call Service `light.turn_off` on `light.bedroom_group`
-    *   Option 3: Template condition `{{ states('sensor.veladial_door_rotary_requested_action') == 'TOGGLE' }}` -> Call Service `light.toggle` on `light.bedroom_group`
-    *   Option 4: Template condition `{{ states('sensor.veladial_door_rotary_requested_action') == 'SET_BRIGHTNESS' }}` -> Call Service `light.turn_on` on `light.bedroom_group` with Brightness template `{{ states('sensor.veladial_door_rotary_requested_brightness') | int(50) }}`
+    *   Option 1: Template condition `{{ states('text_sensor.veladial_door_rotary_requested_action') == 'TURN_ON' }}` -> Call Service `light.turn_on` on `light.bedroom_group`
+    *   Option 2: Template condition `{{ states('text_sensor.veladial_door_rotary_requested_action') == 'TURN_OFF' }}` -> Call Service `light.turn_off` on `light.bedroom_group`
+    *   Option 3: Template condition `{{ states('text_sensor.veladial_door_rotary_requested_action') == 'TOGGLE' }}` -> Call Service `light.toggle` on `light.bedroom_group`
+    *   Option 4: Template condition `{{ states('text_sensor.veladial_door_rotary_requested_action') == 'SET_BRIGHTNESS' }}` -> Call Service `light.turn_on` on `light.bedroom_group` with Brightness template `{{ states('sensor.veladial_door_rotary_requested_brightness') | int(50) }}`
