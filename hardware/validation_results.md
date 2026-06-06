@@ -1,7 +1,9 @@
 # VelaDial — Hardware Validation Results
 
 **Status:** Active validation log — fill in incrementally as physical validation
-phases execute.  
+phases execute. Door-side display, touch, knob, and ON/OFF through the Home
+Assistant bridge have been physically tested by Hardik. Full door-side,
+bedside, sensor, UI, and soak validation remain incomplete.
 **Project:** VelaDial  
 **Scope:** Single consolidated results document, as defined by
 `docs/13_Firmware_Prep_Validation_Plan.md` §7.
@@ -14,12 +16,33 @@ phases execute.
   `docs/13_Firmware_Prep_Validation_Plan.md` §3).
 - Each section is owned by a named tester for a specific board / device in
   hand.
+- Do not generalize the current bridge result. It proves only door-side
+  ON/OFF control through the HA bridge against `light.bedroom_group`.
 - Do **not** invent results. Any field whose value has not been physically
   observed must be recorded as
   `NOT TESTED — awaiting Hardik physical validation input`.
 - Do **not** edit `hardware/elecrow_pinout.md` based on guesses. Only update
   the pinout doc when physical deltas have been confirmed by Hardik on the
   actual board in hand.
+
+---
+
+## Current Door-Side Bridge Result — Hardik Physical Test
+
+| Check | Result | Evidence / notes |
+| --- | --- | --- |
+| Display renders | PASS | Hardik reports display works. |
+| Touch input | PASS | Hardik reports touch works. |
+| Rotary knob input | PASS | Hardik reports knob works. |
+| HA bridge request entity | PASS | Working trigger: `sensor.veladial_door_rotary_veladial_last_bridge_request`. |
+| HA bridge target | PASS | Working target: `light.bedroom_group`. |
+| Door-side ON request | PASS | `VelaDial Last Bridge Request >> 'TURN_ON #1'`; HA state changed to `on`; `VERIFY seq=1: state_now=1 expected=1`. |
+| Door-side OFF request | PASS | `VelaDial Last Bridge Request >> 'TURN_OFF #2'`; HA state changed to `off`; `VERIFY seq=2: state_now=0 expected=0`. |
+| Duplicate input lockout | PASS for current behavior | Duplicate touch/knob events are ignored by lockout. Fast tapping should get visible Busy/Wait feedback in a follow-up. |
+| Bedside validation | NOT TESTED | Not part of this bridge fix. |
+| Production UI quality | NOT TESTED | Current UI is cramped/generic and not production-quality. |
+
+This section does not lift unrelated validation gates. It records the narrow first real working end-to-end control path.
 
 ---
 

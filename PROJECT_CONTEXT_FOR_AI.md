@@ -18,7 +18,7 @@ The system has three parts:
 
 Write production-ready ESPHome YAML for v1 only:
 
-1. **Door-side rotary display** — Multi-theme firmware engine containing 20 selectable UI themes. The main control UI remains 3 pages (Power, Brightness, Presets) plus a hidden Theme Selector accessed via long-press. Behavior is locked as described in this file and in `docs/03_App_Flow.md` and `docs/04_UI_UX_Design_Brief.md`.
+1. **Door-side rotary display** — ThemeOS foundation containing 20 selectable skins / 5 planned layout families. The current UI is not production-quality yet. The main control UI remains 3 pages (Power, Brightness, Presets) plus a hidden Theme Selector accessed via long-press. Behavior is locked as described in this file and in `docs/03_App_Flow.md` and `docs/04_UI_UX_Design_Brief.md`.
 2. **Adaptive display brightness** — TSL2591 lux drives display backlight PWM locally on the ESP32-S3, no Home Assistant round-trip.
 3. **Bedside controller v1**:
    - APDS-9960 standalone left/right gestures.
@@ -342,7 +342,7 @@ The order matters. Do **not** jump into production firmware before validation st
    - Validate the ELECROW board revision and pinout against `hardware/elecrow_pinout.md` and the actual board silkscreen. Multiple ELECROW CrowPanel 1.28 in revisions exist.
    - Run an I2C scan on both nodes and confirm expected addresses (door-side `0x29`, `0x44`; bedside `0x39`, `0x29`).
 3. **Verify VL53L4CD ESPHome support path** before writing hold-nightlight firmware. If support is blocked, do not silently substitute VL53L0X — surface the decision to the owner first.
-4. **Door-side firmware candidate delivered (PR #56).** `esphome/door_side_rotary.yaml` is now a compile-passing multi-theme firmware candidate with 20 selectable themes, 3-page LVGL control flow (Power, Brightness, Presets), hidden Theme Selector via long-press, the 4 locked presets, page-swipe navigation, per-page knob press behavior, wake-only-first behavior, and "Unavailable" badge for HA / LAN outage. Compile PASSED (0 errors). **Hardware validation pending. Not physically validated. Further visual refinement may follow hardware testing.**
+4. **Door-side firmware candidate delivered (PR #56).** `esphome/door_side_rotary.yaml` is a compile-passing ThemeOS foundation with 20 selectable skins / 5 planned layout families, 3-page LVGL control flow (Power, Brightness, Presets), hidden Theme Selector via long-press, the 4 locked presets, page-swipe navigation, per-page knob press behavior, wake-only-first behavior, and "Unavailable" badge for HA / LAN outage. Compile PASSED (0 errors). Hardik has since physically verified display, touch, knob, and HA bridge ON/OFF control. The UI is still not production-quality and needs separate visual cleanup.
 5. **Next steps are hardware validation.**
    - Flash the production door-side firmware to the ELECROW board and verify display, touch, encoder, backlight, TSL2591, SHT45, LED ring, and all 20 themes on real hardware.
    - Bedside bring-up: APDS-9960 standalone first. VL53L4CD second, gated on the support-path verification. **Do not implement sensor fusion in v1.**

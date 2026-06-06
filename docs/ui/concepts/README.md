@@ -37,10 +37,10 @@ All 20 concepts are mandatory and will be explored sequentially:
 19. Vinyl DJ Crossfader
 20. Eclipse Corona
 
-## Production Status (Updated 2026-05-29)
+## Current Status (Updated 2026-06-06)
 
-All 20 concepts have been researched, documented, and prototyped. The final production direction has been implemented:
+All 20 concepts have been researched, documented, and prototyped. The current firmware exposes a ThemeOS foundation, not a final production UI:
 
-**`esphome/door_side_rotary.yaml` is now the production multi-theme firmware engine (PR #56).** It contains all 20 themes as selectable options, switchable on-device via a hidden Theme Selector (long-press >1.5s). Compile-passing with 0 errors. Hardware validation NOT YET TESTED.
+**`esphome/door_side_rotary.yaml` contains 20 selectable skins / 5 planned layout families.** Themes are switchable on-device via a hidden Theme Selector (long-press >1.5s). The current door-side display, touch, knob, and HA bridge ON/OFF path have been physically tested by Hardik, but the UI is still cramped/generic and not production-quality.
 
 The concept prototype YAMLs in `esphome/concepts/` remain as reference implementations and are not intended for production use.

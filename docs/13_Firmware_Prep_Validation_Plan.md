@@ -13,7 +13,7 @@ This document defines the controlled validation sequence required before writing
 **This is not production firmware.** This plan validates hardware, ESPHome component support, I2C addresses, and the Home Assistant control path before any production YAML is written.
 
 **Current YAML file status (updated 2026-05-29):**
-- `esphome/door_side_rotary.yaml` — **Production multi-theme firmware engine** (20 selectable UI themes, compile-passing, PR #56). Hardware validation NOT YET TESTED on physical board.
+- `esphome/door_side_rotary.yaml` — ThemeOS foundation (20 selectable skins / 5 planned layout families, compile-passing, PR #56). The current UI is not production-quality yet. Hardware validation is now partially updated by Hardik's door-side display/touch/knob and HA bridge ON/OFF PASS, but full hardware validation remains incomplete.
 - `esphome/bedside_gesture.yaml` — basic APDS-9960 bring-up with known issues (60s update interval too slow for gestures)
 
 This document supports `docs/06_Implementation_Plan.md` by providing a practical validation checklist. Production firmware requires validated hardware, confirmed component support, and verified I2C communication.

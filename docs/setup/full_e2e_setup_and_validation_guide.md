@@ -6,7 +6,8 @@ This document is the **End-to-End (E2E) validation guide only**. It defines the 
 
 **Important Status Notes:**
 - **This document does not prove testing has happened.**
-- All results remain **NOT TESTED** until the user (Hardik) performs them on physical hardware.
+- The door-side display, touch, knob, and ON/OFF bridge path have been physically tested by Hardik and passed against `light.bedroom_group`.
+- Bedside validation, full-system validation, brightness, presets, sensors, soak testing, and production UI quality remain unproven until Hardik performs those tests on physical hardware.
 - No secrets, logs, or binary evidence should be committed to the repository unless explicitly approved.
 
 ## 2. Full System Architecture
@@ -14,7 +15,7 @@ This document is the **End-to-End (E2E) validation guide only**. It defines the 
 The VelaDial system operates entirely on the local network. The command paths are:
 
 **Door-side Path:**
-ELECROW ESP32-S3 → ESPHome → Home Assistant (Raspberry Pi) → LocalTuya (Local LAN) → `light.bedroom_group`
+ELECROW ESP32-S3 → ESPHome bridge request sensor → Home Assistant bridge automation → `light.bedroom_group`
 
 **Bedside Path:**
 Adafruit ESP32-C6 + APDS-9960 → ESPHome → Home Assistant (Raspberry Pi) → LocalTuya (Local LAN) → `light.bedroom_group`
@@ -28,6 +29,8 @@ Before beginning E2E validation, ensure the following are complete:
 - ESPHome add-on is installed in Home Assistant.
 - LocalTuya is installed and configured with your Tuya bulbs.
 - The `light.bedroom_group` entity is created and functional in Home Assistant.
+- The Home Assistant bridge package is installed at `/config/packages/veladial_control_bridge.yaml`.
+- The bridge trigger entity is verified in Developer Tools → States. Hardik's working trigger is `sensor.veladial_door_rotary_veladial_last_bridge_request`.
 - `secrets.yaml` is created in the `/config/esphome/` directory on Home Assistant (with real local values, **not committed to Git**).
 - Physical hardware (ELECROW board, Adafruit board, APDS-9960) is available.
 - High-quality USB data cables are available for initial flashing.
@@ -144,6 +147,21 @@ Verify the core integration path.
 | Internet-off test | Control works with WAN disconnected (if safe). | | NOT TESTED | |
 | Entity unavailable | Troubleshoot if Tuya IP changes. | | NOT TESTED | |
 | Command latency | Note any noticeable delay. | | NOT TESTED | |
+
+## 9A. Door-side Home Assistant Bridge Validation
+
+Hardik's working bridge path uses instance-specific doubled/prefixed entity IDs. Verify your own generated entity IDs in Home Assistant **Developer Tools → States** before testing.
+
+| Check | Expected Result | Actual Result | Status | Evidence / Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| Last bridge request entity | `sensor.veladial_door_rotary_veladial_last_bridge_request` exists or local package is adjusted to the actual generated ID. | | PASS for Hardik's HA; verify per instance | |
+| Bridge package trigger | Automation trigger listens to the exact last bridge request entity. | | PASS for Hardik's HA; verify per instance | |
+| Light target | Automation targets `light.bedroom_group`. | | PASS for Hardik's HA; verify per instance | |
+| Physical tap/press test | Tapping/pressing VelaDial creates a matching automation trace. | | PASS for Hardik's door-side ON/OFF test only | |
+| Manual Run Actions avoided | Test is not performed with Home Assistant's manual Run Actions button. | | REQUIRED | Run Actions is not a valid bridge test. |
+| Trace timestamp match | Selected trace timestamp matches the physical tap/press. | | PASS for Hardik's door-side ON/OFF test only | |
+| ON request | `TURN_ON #1` turns `light.bedroom_group` on and verifies state. | | PASS for Hardik's door-side ON/OFF test only | |
+| OFF request | `TURN_OFF #2` turns `light.bedroom_group` off and verifies state. | | PASS for Hardik's door-side ON/OFF test only | |
 
 ## 10. Full E2E Scenarios
 

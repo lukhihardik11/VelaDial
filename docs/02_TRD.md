@@ -123,7 +123,7 @@ All sensors connect via STEMMA QT / Qwiic connectors for solderless daisy-chaini
 - Home Assistant as the automation/control hub.
 - LocalTuya or another local Tuya LAN integration for RGB bulb control.
 - LVGL inside ESPHome for the round display UI.
-- Multi-theme firmware engine (20 selectable UI themes, switchable on-device via hidden Theme Selector).
+- Multi-theme firmware foundation (20 selectable skins / 5 planned layout families, switchable on-device via hidden Theme Selector). Current visuals are not production-quality unique themes yet.
 
 ## ESPHome support notes
 
