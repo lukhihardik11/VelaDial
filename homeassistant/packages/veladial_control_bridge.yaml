@@ -18,31 +18,17 @@ automation:
         entity_id: sensor.veladial_door_rotary_request_counter
     condition:
       - condition: template
-        value_template: "{{ trigger.to_state.state | int(0) > 0 }}"
+        value_template: "{{ states('sensor.veladial_door_rotary_request_counter') | int(0) > 0 }}"
     action:
       - variables:
-          requested_action: "{{ states('text_sensor.veladial_door_rotary_requested_action') }}"
+          requested_action: "{{ states('text_sensor.veladial_door_rotary_requested_action') | trim | upper }}"
+          request_counter: "{{ states('sensor.veladial_door_rotary_request_counter') }}"
           brightness_pct: "{{ states('sensor.veladial_door_rotary_requested_brightness') | int(50) }}"
           preset_index: "{{ states('sensor.veladial_door_rotary_requested_preset') | int(0) }}"
-          request_counter: "{{ trigger.to_state.state }}"
       - service: system_log.write
         data:
-          message: >
-            VelaDial Bridge: Request triggered. 
-            requested_action={{ requested_action }}, 
-            request_counter={{ request_counter }}, 
-            trigger.entity_id={{ trigger.entity_id }}, 
-            trigger.from_state={{ trigger.from_state.state | default('none') }}, 
-            trigger.to_state={{ trigger.to_state.state }}
+          message: "VelaDial bridge triggered: action={{ requested_action }}, counter={{ request_counter }}, brightness={{ brightness_pct }}, preset={{ preset_index }}"
           level: info
-      - action: persistent_notification.create
-        data:
-          title: "VelaDial Bridge Executed"
-          message: >
-            Executed request #{{ request_counter }} -> {{ requested_action }}
-            Entity: {{ trigger.entity_id }}
-            From: {{ trigger.from_state.state | default('none') }} To: {{ trigger.to_state.state }}
-          notification_id: "veladial_bridge_status"
       - choose:
           - conditions:
               - condition: template
@@ -51,6 +37,11 @@ automation:
               - action: light.turn_on
                 target:
                   entity_id: light.bedroom_group
+              - action: persistent_notification.create
+                data:
+                  title: "VelaDial Bridge Executed"
+                  message: "Executed request #{{ request_counter }} -> TURN_ON"
+                  notification_id: "veladial_bridge_status"
           - conditions:
               - condition: template
                 value_template: "{{ requested_action == 'TURN_OFF' }}"
@@ -58,6 +49,11 @@ automation:
               - action: light.turn_off
                 target:
                   entity_id: light.bedroom_group
+              - action: persistent_notification.create
+                data:
+                  title: "VelaDial Bridge Executed"
+                  message: "Executed request #{{ request_counter }} -> TURN_OFF"
+                  notification_id: "veladial_bridge_status"
           - conditions:
               - condition: template
                 value_template: "{{ requested_action == 'TOGGLE' }}"
@@ -65,6 +61,11 @@ automation:
               - action: light.toggle
                 target:
                   entity_id: light.bedroom_group
+              - action: persistent_notification.create
+                data:
+                  title: "VelaDial Bridge Executed"
+                  message: "Executed request #{{ request_counter }} -> TOGGLE"
+                  notification_id: "veladial_bridge_status"
           - conditions:
               - condition: template
                 value_template: "{{ requested_action == 'SET_BRIGHTNESS' }}"
@@ -74,6 +75,11 @@ automation:
                   entity_id: light.bedroom_group
                 data:
                   brightness_pct: "{{ brightness_pct }}"
+              - action: persistent_notification.create
+                data:
+                  title: "VelaDial Bridge Executed"
+                  message: "Executed request #{{ request_counter }} -> SET_BRIGHTNESS"
+                  notification_id: "veladial_bridge_status"
           - conditions:
               - condition: template
                 value_template: "{{ requested_action == 'APPLY_PRESET' }}"
@@ -111,13 +117,18 @@ automation:
                         data:
                           color_temp: 454
                           brightness_pct: 5
+              - action: persistent_notification.create
+                data:
+                  title: "VelaDial Bridge Executed"
+                  message: "Executed request #{{ request_counter }} -> APPLY_PRESET"
+                  notification_id: "veladial_bridge_status"
         default:
           - service: system_log.write
             data:
-              message: "Unknown requested_action={{ requested_action }}"
+              message: "Unknown requested_action='{{ requested_action }}'"
               level: warning
           - action: persistent_notification.create
             data:
               title: "VelaDial Bridge Error"
-              message: "Unknown requested_action={{ requested_action }}"
+              message: "Unknown requested_action='{{ requested_action }}'"
               notification_id: "veladial_bridge_error"
