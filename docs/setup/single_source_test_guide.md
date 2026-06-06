@@ -11,9 +11,9 @@
 
 2.  **Confirm Request Entities Exist**
     *   Go to Home Assistant **Developer Tools → States**.
-    *   Search for `veladial_door_rotary_request_counter`. Verify the exact entity ID is `sensor.veladial_door_rotary_request_counter`.
-    *   Search for `veladial_door_rotary_requested_action`. **CRITICAL:** Note whether the entity ID is `sensor.veladial_door_rotary_requested_action` OR `text_sensor.veladial_door_rotary_requested_action`.
-    *   *If the action entity starts with `text_sensor.`, you MUST manually edit the package file or UI automation to match it.*
+    *   Search for `last_bridge`.
+    *   **CRITICAL:** Note the *exact* entity ID shown by Home Assistant. Often this is generated as `sensor.veladial_door_rotary_veladial_last_bridge_request`.
+    *   If your entity ID differs from the one in the `/config/packages/veladial_control_bridge.yaml` file, you MUST manually update the file so they match exactly.
 
 3.  **Install HA Bridge Package**
     *   Copy the bridge file to `/config/packages/veladial_control_bridge.yaml`.
@@ -32,13 +32,13 @@
     *   Test by physically tapping or pressing the VelaDial screen/knob.
 
 7.  **Confirm Request Counter Increments**
-    *   In Developer Tools → States, verify that `sensor.veladial_door_rotary_request_counter` increased by 1.
-    *   Verify `text_sensor.veladial_last_bridge_request` shows the correct action and counter (e.g. `TURN_ON #10`).
+    *   In Developer Tools → States, verify that `sensor.veladial_door_rotary_veladial_door_rotary_request_counter` increased by 1.
+    *   Verify `sensor.veladial_door_rotary_veladial_last_bridge_request` shows the correct action and counter (e.g. `TURN_ON #10`).
 
 8.  **Open Trace and Check Execution**
     *   Go back to the automation and open **Traces**.
     *   Select the trace that exactly matches the timestamp of your physical tap.
-    *   Confirm the trigger entity was `text_sensor.veladial_last_bridge_request`.
+    *   Confirm the trigger entity was `sensor.veladial_door_rotary_veladial_last_bridge_request`.
     *   Confirm the raw value was parsed correctly (e.g., `TURN_ON #10`).
     *   Confirm the choose branch executed the correct action and didn't fall back to `default`.
     *   Check for a Persistent Notification in HA saying `Executed request #X -> TURN_ON` (or `TURN_OFF`).
@@ -55,10 +55,10 @@
 
 If packages refuse to load, create this automation manually in the UI:
 
-*   **Trigger:** State -> Entity: `text_sensor.veladial_last_bridge_request`
+*   **Trigger:** State -> Entity: `sensor.veladial_door_rotary_veladial_last_bridge_request`
 *   **Condition:** (None required)
 *   **Action:** Choose (Add 4 options):
-    *   Option 1: Template condition `{{ states('text_sensor.veladial_last_bridge_request').split('#')[0] | trim | upper == 'TURN_ON' }}` -> Call Service `light.turn_on` on `light.bedroom_group`
-    *   Option 2: Template condition `{{ states('text_sensor.veladial_last_bridge_request').split('#')[0] | trim | upper == 'TURN_OFF' }}` -> Call Service `light.turn_off` on `light.bedroom_group`
-    *   Option 3: Template condition `{{ states('text_sensor.veladial_last_bridge_request').split('#')[0] | trim | upper == 'TOGGLE' }}` -> Call Service `light.toggle` on `light.bedroom_group`
-    *   Option 4: Template condition `{{ states('text_sensor.veladial_last_bridge_request').split('#')[0] | trim | upper == 'SET_BRIGHTNESS' }}` -> Call Service `light.turn_on` on `light.bedroom_group` with Brightness template `{{ states('sensor.veladial_door_rotary_requested_brightness') | int(50) }}`
+    *   Option 1: Template condition `{{ states('sensor.veladial_door_rotary_veladial_last_bridge_request').split('#')[0] | trim | upper == 'TURN_ON' }}` -> Call Service `light.turn_on` on `light.bedroom_group`
+    *   Option 2: Template condition `{{ states('sensor.veladial_door_rotary_veladial_last_bridge_request').split('#')[0] | trim | upper == 'TURN_OFF' }}` -> Call Service `light.turn_off` on `light.bedroom_group`
+    *   Option 3: Template condition `{{ states('sensor.veladial_door_rotary_veladial_last_bridge_request').split('#')[0] | trim | upper == 'TOGGLE' }}` -> Call Service `light.toggle` on `light.bedroom_group`
+    *   Option 4: Template condition `{{ states('sensor.veladial_door_rotary_veladial_last_bridge_request').split('#')[0] | trim | upper == 'SET_BRIGHTNESS' }}` -> Call Service `light.turn_on` on `light.bedroom_group` with Brightness template `{{ states('sensor.veladial_door_rotary_veladial_door_rotary_requested_brightness') | int(50) }}`

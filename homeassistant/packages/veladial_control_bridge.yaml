@@ -15,19 +15,19 @@ automation:
     mode: queued
     trigger:
       - platform: state
-        entity_id: text_sensor.veladial_last_bridge_request
+        entity_id: sensor.veladial_door_rotary_veladial_last_bridge_request
     action:
       - variables:
-          bridge_request_raw: "{{ states('text_sensor.veladial_last_bridge_request') | trim }}"
+          bridge_request_raw: "{{ states('sensor.veladial_door_rotary_veladial_last_bridge_request') | trim }}"
           requested_action: "{{ bridge_request_raw.split('#')[0] | trim | upper }}"
           request_counter: >-
             {% if '#' in bridge_request_raw %}
               {{ bridge_request_raw.split('#')[1] | trim }}
             {% else %}
-              {{ states('sensor.veladial_door_rotary_request_counter') }}
+              {{ states('sensor.veladial_door_rotary_veladial_door_rotary_request_counter') }}
             {% endif %}
-          brightness_pct: "{{ states('sensor.veladial_door_rotary_requested_brightness') | int(50) }}"
-          preset_index: "{{ states('sensor.veladial_door_rotary_requested_preset') | int(0) }}"
+          brightness_pct: "{{ states('sensor.veladial_door_rotary_veladial_door_rotary_requested_brightness') | int(50) }}"
+          preset_index: "{{ states('sensor.veladial_door_rotary_veladial_door_rotary_requested_preset') | int(0) }}"
       - service: system_log.write
         data:
           message: "VelaDial bridge received: raw={{ bridge_request_raw }}, action={{ requested_action }}, request={{ request_counter }}"
