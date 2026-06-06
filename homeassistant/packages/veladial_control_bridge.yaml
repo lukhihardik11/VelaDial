@@ -15,19 +15,22 @@ automation:
     mode: queued
     trigger:
       - platform: state
-        entity_id: sensor.veladial_door_rotary_request_counter
-    condition:
-      - condition: template
-        value_template: "{{ states('sensor.veladial_door_rotary_request_counter') | int(0) > 0 }}"
+        entity_id: text_sensor.veladial_last_bridge_request
     action:
       - variables:
-          requested_action: "{{ states('text_sensor.veladial_door_rotary_requested_action') | trim | upper }}"
-          request_counter: "{{ states('sensor.veladial_door_rotary_request_counter') }}"
+          bridge_request_raw: "{{ states('text_sensor.veladial_last_bridge_request') | trim }}"
+          requested_action: "{{ bridge_request_raw.split('#')[0] | trim | upper }}"
+          request_counter: >-
+            {% if '#' in bridge_request_raw %}
+              {{ bridge_request_raw.split('#')[1] | trim }}
+            {% else %}
+              {{ states('sensor.veladial_door_rotary_request_counter') }}
+            {% endif %}
           brightness_pct: "{{ states('sensor.veladial_door_rotary_requested_brightness') | int(50) }}"
           preset_index: "{{ states('sensor.veladial_door_rotary_requested_preset') | int(0) }}"
       - service: system_log.write
         data:
-          message: "VelaDial bridge triggered: action={{ requested_action }}, counter={{ request_counter }}, brightness={{ brightness_pct }}, preset={{ preset_index }}"
+          message: "VelaDial bridge received: raw={{ bridge_request_raw }}, action={{ requested_action }}, request={{ request_counter }}"
           level: info
       - choose:
           - conditions:
@@ -125,10 +128,10 @@ automation:
         default:
           - service: system_log.write
             data:
-              message: "Unknown requested_action='{{ requested_action }}'"
+              message: "Unknown bridge request raw='{{ bridge_request_raw }}', parsed='{{ requested_action }}'"
               level: warning
           - action: persistent_notification.create
             data:
               title: "VelaDial Bridge Error"
-              message: "Unknown requested_action='{{ requested_action }}'"
+              message: "Unknown bridge request raw='{{ bridge_request_raw }}', parsed='{{ requested_action }}'"
               notification_id: "veladial_bridge_error"
