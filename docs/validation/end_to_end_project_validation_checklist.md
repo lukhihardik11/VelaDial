@@ -1,6 +1,6 @@
 # End-to-End Project Validation Checklist
 
-> **Status:** Validation package created. Hardware validation **NOT TESTED**.  
+> **Status:** Door-side display, touch, knob, and ON/OFF through the Home Assistant bridge have been physically tested by Hardik. Full-system validation is still incomplete.
 > **Target:** Full VelaDial system: Raspberry Pi + Home Assistant + LocalTuya/bedroom lights + door-side ELECROW ESP32-S3 + bedside ESP32-C6/APDS-9960.  
 > **Rule:** Do not mark any row PASS until Hardik has physically performed the step and captured evidence.
 
@@ -33,7 +33,7 @@ This is the technician-style field runbook for validating VelaDial from zero set
 | Gate C — door-side boots | ELECROW boots, display renders, ESPHome API connects | Stop. Fix flash/pin/display/network before UI testing. |
 | Gate D — long-press safe | Long press opens Theme Selector and does **not** toggle lights | Stop. Do not proceed until fixed. This is a safety gate. |
 | Gate E — bedside boots | ESP32-C6 boots, APDS-9960 is detected, ESPHome API connects | Stop. Fix wiring/flash/I2C before gesture testing. |
-| Gate F — full E2E path | Door-side and bedside both control `light.bedroom_group` through HA/local integration | Only then consider conditional hardware PASS. |
+| Gate F — full E2E path | Door-side and bedside both control `light.bedroom_group` through HA/local integration | Only then consider conditional full-system hardware PASS. Door-side ON/OFF bridge PASS alone is not bedside or full-system PASS. |
 
 ---
 
@@ -152,7 +152,9 @@ This is the technician-style field runbook for validating VelaDial from zero set
 
 | Test item | Procedure | Expected behavior | Status | Evidence / notes |
 | :--- | :--- | :--- | :--- | :--- |
-| Power page | Short press or tap Power. | `light.bedroom_group` toggles ON/OFF. | PENDING | |
+| Bridge entity IDs | In HA Developer Tools -> States, verify generated VelaDial bridge entities. | Hardik's working trigger is `sensor.veladial_door_rotary_veladial_last_bridge_request`; adjust package if local IDs differ. | PASS for Hardik's HA; verify per instance | Do not assume clean `text_sensor.*` IDs. |
+| Bridge trace method | Physically tap/press VelaDial, then open the automation trace with the matching timestamp. | Trace is from the physical input, not manual Run Actions. | PASS for Hardik's ON/OFF test; required for retest | Home Assistant Run Actions is not a valid bridge test. |
+| Power page | Short press or tap Power. | `light.bedroom_group` toggles ON/OFF through the HA bridge. | PASS for Hardik's ON/OFF bridge test only | Evidence reported: `TURN_ON #1` verified on, `TURN_OFF #2` verified off. |
 | Brightness page | Rotate knob CW/CCW. | Brightness changes in visible steps. | PENDING | |
 | Brightness HA sync | Watch HA light entity during changes. | HA reflects brightness value. | PENDING | |
 | Preset selection | Rotate on Presets page. | Highlight moves through 4 presets. | PENDING | |
@@ -301,4 +303,4 @@ A conditional PASS is allowed only when the core system works and limitations ar
 
 ## Final note
 
-This checklist is intentionally strict. VelaDial is not physically validated until the filled results template contains evidence-backed PASS/FAIL results from real hardware testing.
+This checklist is intentionally strict. The current evidence supports a narrow door-side ON/OFF bridge PASS only. VelaDial is not fully physically validated until the filled results template contains evidence-backed PASS/FAIL results for the remaining door-side behavior, bedside behavior, and full-system scenarios.

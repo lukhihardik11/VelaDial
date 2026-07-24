@@ -215,12 +215,12 @@ When Home Assistant, the Raspberry Pi, or the local LAN is unreachable, the door
 - Avoid tiny widgets and dense dashboard layouts.
 - Avoid complex 3D, heavy gradients, and excessive animation in final firmware.
 - AI-generated visual concepts can inspire the design, but final UI must be practical for ESPHome LVGL on a 240x240 round display.
-- The production firmware contains 20 selectable UI themes. Each theme must individually remain within LVGL performance constraints.
+- The current firmware contains a ThemeOS foundation: 20 selectable skins / 5 planned layout families. The current UI is not production-quality yet, and the skins should not be described as 20 unique premium themes.
 - Theme switching occurs at runtime without reflashing; all 20 themes share the same LVGL widget pool.
 
-## Available UI Themes (20 total)
+## Available Theme Slots (20 selectable skins)
 
-The production firmware includes the following selectable themes, each with a unique visual metaphor and LED ring color:
+The firmware currently exposes these selectable theme slots and LED ring colors. Next UI work should turn the five priority layout families into real, readable 240 x 240 round-screen layouts before expanding the rest.
 
 | # | Theme Name | LED Ring Color |
 |---|-----------|----------------|

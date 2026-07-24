@@ -1,0 +1,95 @@
+automation:
+  - id: veladial_door_rotary_control_bridge
+    alias: VelaDial Bridge - Execute Bedroom Group Request
+    description: Execute VelaDial bridge requests against light.bedroom_group.
+    mode: queued
+    max: 10
+
+    trigger:
+      - platform: state
+        entity_id: sensor.veladial_door_rotary_veladial_last_bridge_request
+
+    variables:
+      bridge_request_raw: "{{ states('sensor.veladial_door_rotary_veladial_last_bridge_request') | trim }}"
+      requested_action: "{{ bridge_request_raw.split('#')[0] | trim | upper }}"
+      request_counter: >-
+        {% if '#' in bridge_request_raw %}
+          {{ bridge_request_raw.split('#')[1] | trim }}
+        {% else %}
+          {{ states('sensor.veladial_door_rotary_veladial_door_rotary_request_counter') }}
+        {% endif %}
+      brightness_pct: "{{ states('sensor.veladial_door_rotary_veladial_door_rotary_requested_brightness') | int(50) }}"
+      preset_index: "{{ states('sensor.veladial_door_rotary_veladial_door_rotary_requested_preset') | int(0) }}"
+
+    action:
+      - service: system_log.write
+        data:
+          level: warning
+          message: >-
+            VelaDial bridge received:
+            raw={{ bridge_request_raw }},
+            action={{ requested_action }},
+            request={{ request_counter }},
+            brightness={{ brightness_pct }},
+            preset={{ preset_index }}
+
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'TURN_ON' }}"
+            sequence:
+              - service: light.turn_on
+                target:
+                  entity_id: light.bedroom_group
+              - service: persistent_notification.create
+                data:
+                  title: VelaDial Bridge
+                  message: "Executed request #{{ request_counter }} -> TURN_ON"
+
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'TURN_OFF' }}"
+            sequence:
+              - service: light.turn_off
+                target:
+                  entity_id: light.bedroom_group
+              - service: persistent_notification.create
+                data:
+                  title: VelaDial Bridge
+                  message: "Executed request #{{ request_counter }} -> TURN_OFF"
+
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'TOGGLE' }}"
+            sequence:
+              - service: light.toggle
+                target:
+                  entity_id: light.bedroom_group
+              - service: persistent_notification.create
+                data:
+                  title: VelaDial Bridge
+                  message: "Executed request #{{ request_counter }} -> TOGGLE"
+
+          - conditions:
+              - condition: template
+                value_template: "{{ requested_action == 'BRIGHTNESS_50' }}"
+            sequence:
+              - service: light.turn_on
+                target:
+                  entity_id: light.bedroom_group
+                data:
+                  brightness_pct: 50
+              - service: persistent_notification.create
+                data:
+                  title: VelaDial Bridge
+                  message: "Executed request #{{ request_counter }} -> BRIGHTNESS_50"
+
+        default:
+          - service: persistent_notification.create
+            data:
+              title: VelaDial Bridge Error
+              message: >-
+                Unknown bridge request:
+                raw='{{ bridge_request_raw }}',
+                parsed='{{ requested_action }}'.
+                Check sensor.veladial_door_rotary_veladial_last_bridge_request

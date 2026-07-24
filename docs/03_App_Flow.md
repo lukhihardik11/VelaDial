@@ -122,7 +122,7 @@ These behaviors apply only when the display is already awake.
 
 ### Theme Selector Flow
 
-Purpose: Switch between the 20 built-in UI themes without reflashing firmware.
+Purpose: Switch between the current 20 selectable skins without reflashing firmware. These are a ThemeOS foundation, not 20 production-quality unique themes yet.
 
 Flow:
 1. User long-presses the knob (>1.5s) from any awake page.

@@ -54,7 +54,7 @@ ESPHome is used to compile and manage the firmware for the VelaDial hardware.
 
 1. **Install Add-on:** In Home Assistant, go to **Settings > Add-ons**, click **Add-on Store**, search for "ESPHome", and install it. Start the add-on and enable "Show in sidebar".
 2. **Open Web UI:** Click ESPHome in the sidebar to open the dashboard.
-3. **Configuration Files:** The YAML files from this repository (`esphome/door_side_rotary.yaml` and `esphome/bedside_gesture.yaml`) must be placed in the `/config/esphome/` directory of your Home Assistant installation. Note: `door_side_rotary.yaml` is the **production multi-theme firmware engine** with 20 selectable UI themes.
+3. **Configuration Files:** The YAML files from this repository (`esphome/door_side_rotary.yaml` and `esphome/bedside_gesture.yaml`) must be placed in the `/config/esphome/` directory of your Home Assistant installation. Note: `door_side_rotary.yaml` contains the current ThemeOS foundation with 20 selectable skins / 5 planned layout families; the UI is not production-quality yet.
 4. **Secrets:** Create a `secrets.yaml` file in the `/config/esphome/` directory. **Never commit real secrets to the repository.** Use the placeholder structure provided in Section 10.
 5. **Expected Node Names:**
    - Door-side: `veladial-door-rotary`

@@ -1,187 +1,129 @@
-# VelaDial Door-Side Rotary — Single-Source Test Guide
+# VelaDial Single-Source Test Guide
 
-> **Firmware branch**: `firmware/fix-input-lockout-ha-verification-themeos-truth`
-> **Primary file**: `esphome/door_side_rotary.yaml`
-> **Target entity**: `light.bedroom_group` (5 Surplife RGBCW bulbs)
+This guide is the current source of truth for the first real working end-to-end control path: door-side VelaDial input to Home Assistant bridge automation to `light.bedroom_group`.
 
----
+## Current Confirmed Status
 
-## Prerequisites (ONE-TIME Setup)
+Hardik has physically confirmed:
 
-### 1. Enable "Allow device to perform Home Assistant actions"
+- Door-side display works.
+- Door-side touch works.
+- Door-side knob works.
+- Door-side Home Assistant bridge ON/OFF control works against `light.bedroom_group`.
+- VelaDial receives Home Assistant state back and verifies ON/OFF correctly.
+- Duplicate touch/knob events are ignored by the current lockout behavior.
 
-1. Go to **Settings → Devices & Services → ESPHome**
-2. Click **CONFIGURE** next to `veladial-door-rotary`
-3. Check **"Allow the device to perform Home Assistant actions"**
-4. Click **Submit**
+Do not extend that result beyond what was tested. Bedside is not part of this fix. The UI/ThemeOS work is not production-quality yet.
 
-> Without this, the device can send commands but HA silently ignores them.
-> This is the #1 cause of "command dispatched but nothing happens."
+## Working Home Assistant Entity IDs
 
-### 2. Verify `light.bedroom_group` exists
+Hardik's working Home Assistant instance generated doubled/prefixed ESPHome entity IDs:
 
-1. Go to **Developer Tools → States**
-2. Search for `light.bedroom_group`
-3. If missing: **Settings → Helpers → Create → Light Group → "Bedroom Group"** → add all 5 Surplife bulbs
-4. Ensure Entity ID is exactly `light.bedroom_group`
+| Purpose | Entity ID |
+| --- | --- |
+| Last bridge request trigger | `sensor.veladial_door_rotary_veladial_last_bridge_request` |
+| Request counter | `sensor.veladial_door_rotary_veladial_door_rotary_request_counter` |
+| Requested action | `sensor.veladial_door_rotary_veladial_door_rotary_requested_action` |
+| Requested brightness | `sensor.veladial_door_rotary_veladial_door_rotary_requested_brightness` |
+| Requested preset | `sensor.veladial_door_rotary_veladial_door_rotary_requested_preset` |
+| Light target | `light.bedroom_group` |
 
-### 3. Test manually in HA first
+These IDs are instance-specific. Before testing, go to Home Assistant **Developer Tools -> States**, search for `veladial` and `last_bridge`, and confirm the exact entity IDs in your Home Assistant instance. If your generated IDs differ, update `/config/packages/veladial_control_bridge.yaml` to match your instance.
 
-Go to **Developer Tools → Actions** and run:
+## Required Test Order
 
-```yaml
-action: light.turn_on
-target:
-  entity_id: light.bedroom_group
-data:
-  brightness_pct: 50
-```
+1. **Confirm the light group works in Home Assistant**
 
-Then:
+   In Home Assistant, manually turn `light.bedroom_group` ON and OFF. Confirm the real bulbs respond before testing VelaDial.
 
-```yaml
-action: light.turn_off
-target:
-  entity_id: light.bedroom_group
-```
+2. **Install the bridge package**
 
-Both must physically toggle bulbs before testing VelaDial.
+   Put `homeassistant/packages/veladial_control_bridge.yaml` at `/config/packages/veladial_control_bridge.yaml` in Home Assistant.
 
----
+   Ensure packages are enabled in `configuration.yaml`, for example:
 
-## Flash Command
+   ```yaml
+   homeassistant:
+     packages: !include_dir_named packages
+   ```
 
-```bash
-esphome run esphome/door_side_rotary.yaml
-```
+3. **Restart Home Assistant**
 
----
+   Fully restart Home Assistant after adding or editing the package. Reloading only automations may not load package changes reliably.
 
-## 20-Step Test Sequence
+4. **Confirm the automation exists**
 
-### Phase 1: Boot & Display (Steps 1-3)
+   Go to **Settings -> Automations & Scenes** and search for `VelaDial Bridge - Execute Bedroom Group Request`.
 
-| Step | Action | Expected Result | Log Message |
-|------|--------|-----------------|-------------|
-| 1 | Power on / flash | "VELADIAL" splash in ice-blue | `BOOT: Backlight ON` |
-| 2 | Wait 3 seconds | Splash hides, Power page appears | `Boot: splash done, hiding overlay` |
-| 3 | Observe Power page | Large "OFF" (roboto48), "Bedroom Group" label, "T01 Minimal" in theme color, "Press/Tap" hint | `BOOT: Rendering theme and UI` |
+   If stale restored/duplicate bridge automations exist, disable or delete the stale copy and keep only the active package automation.
 
-### Phase 2: HA Diagnostic Buttons (Steps 4-8)
+5. **Do not use Run Actions as the test**
 
-These buttons bypass ALL input handling. They test ONLY the HA action dispatch path.
+   Home Assistant's manual **Run Actions** button is not a valid test for this automation. It does not prove the real ESPHome state-triggered bridge path.
 
-| Step | Action | Expected Result | Log Message |
-|------|--------|-----------------|-------------|
-| 4 | HA: press "VelaDial Turn ON Bedroom Group" | Bulbs physically turn ON | `TURN ON BEDROOM GROUP: requested` |
-| 5 | Observe VelaDial screen | "ON" in theme color, "Bedroom Group ON" in green | State import fires |
-| 6 | HA: press "VelaDial Turn OFF Bedroom Group" | Bulbs physically turn OFF | `TURN OFF BEDROOM GROUP: requested` |
-| 7 | Observe VelaDial screen | "OFF" in gray, "Bedroom Group OFF" | State import fires |
-| 8 | HA: press "VelaDial Brightness 50" | Bulbs turn on at 50% | `SET BRIGHTNESS 50: requested` |
+   Test only by physically tapping/pressing VelaDial.
 
-**If Steps 4-8 ALL fail**: "Allow actions" permission is NOT enabled. Go back to Prerequisites Step 1.
-**If Steps 4-8 work**: HA communication is confirmed. Proceed to Phase 3.
+6. **Tap or press VelaDial**
 
-### Phase 3: Knob Deterministic Power Control (Steps 9-12)
+   Physically tap the door-side display or press the knob while the UI is awake and on the expected control page.
 
-| Step | Action | Expected Result | Log Message |
-|------|--------|-----------------|-------------|
-| 9 | Short-press knob (bulbs ON) | "Turning OFF..." → bulbs OFF → "Bedroom Group OFF" | `POWER CMD seq=1: lights_on=1 -> sending light.turn_off` |
-| 10 | Short-press knob (bulbs OFF) | "Turning ON..." → bulbs ON → "Bedroom Group ON" | `POWER CMD seq=2: lights_on=0 -> sending light.turn_on` |
-| 11 | Rapid double-press (<800ms) | ONLY first press fires. Second shows lockout | `INPUT IGNORED: duplicate within lockout (knob press)` |
-| 12 | Wait 1s after any toggle | Status label shows verified state | `VERIFY seq=N: state_now=X` |
+7. **Check the last bridge request**
 
-### Phase 4: Touch Deterministic Power Control (Steps 13-14)
+   In **Developer Tools -> States**, confirm:
 
-| Step | Action | Expected Result | Log Message |
-|------|--------|-----------------|-------------|
-| 13 | Tap center of screen | Same as knob: deterministic ON or OFF | `INPUT ACCEPTED: touch power tap (seq=N)` |
-| 14 | Rapid double-tap (<800ms) | Only first tap fires | `INPUT IGNORED: duplicate within lockout (touch tap)` |
+   - `sensor.veladial_door_rotary_veladial_last_bridge_request` changed.
+   - The value looks like `TURN_ON #1` or `TURN_OFF #2`.
+   - The request counter changed consistently.
 
-### Phase 5: Theme Selector (Steps 15-18)
+8. **Check the automation trace**
 
-| Step | Action | Expected Result | Log Message |
-|------|--------|-----------------|-------------|
-| 15 | Long-press knob (>1.5s) | Theme Selector opens: color circle, "01/20", name, ring | `Theme selector: OPENED` |
-| 16 | Rotate knob clockwise | Circle/ring color changes, index increments, name changes | `Theme selector preview: X - Name` |
-| 17 | Short-press to apply | "APPLIED" green → returns to Power page | `Theme applied: X` |
-| 18 | Observe Power page | New theme name, colors, motif, arc style | `Theme rendered: X` |
+   Open the bridge automation trace and select the trace whose timestamp exactly matches the physical tap/press. Ignore older traces and traces created by manual Run Actions.
 
-**Critical**: Pressing knob in Theme Selector must NOT also fire power toggle (fall-through bug was fixed with early-return lambda).
+   Confirm:
 
-### Phase 6: Page Navigation (Steps 19-20)
+   - Trigger entity is `sensor.veladial_door_rotary_veladial_last_bridge_request`.
+   - Raw value is parsed as the expected action.
+   - The correct choose branch runs.
+   - The trace calls `light.turn_on`, `light.turn_off`, or `light.toggle` against `light.bedroom_group`.
 
-| Step | Action | Expected Result | Log Message |
-|------|--------|-----------------|-------------|
-| 19 | Swipe left on screen | Navigates to Brightness page | — |
-| 20 | Swipe left again | Navigates to Presets page | — |
+9. **Confirm the light state and VelaDial verification**
 
----
+   Confirm the real bulbs changed state and Home Assistant reports the new `light.bedroom_group` state. VelaDial logs should show verification matching the expected state, for example:
 
-## Troubleshooting Decision Tree
+   ```text
+   VelaDial Last Bridge Request >> 'TURN_ON #1'
+   HA state changed to on
+   VERIFY seq=1: state_now=1 expected=1
+   VelaDial Last Bridge Request >> 'TURN_OFF #2'
+   HA state changed to off
+   VERIFY seq=2: state_now=0 expected=0
+   ```
 
-```
-Step 4 fails (HA button doesn't toggle bulbs)?
-├─ Check: "Allow device to perform HA actions" enabled?
-│  ├─ NO → Enable it (Prerequisites Step 1) — this is the fix
-│  └─ YES → Check: light.bedroom_group exists and works manually?
-│     ├─ NO → Create it (Prerequisites Step 2-3)
-│     └─ YES → Check ESPHome logs for connection errors
+## If the Bridge Fails
 
-Step 9 fails (knob doesn't toggle) but Step 4 works?
-├─ Check logs for "INPUT ACCEPTED" or "INPUT IGNORED"
-│  ├─ "INPUT IGNORED" → Wait 800ms and try again (lockout working correctly)
-│  ├─ "INPUT ACCEPTED" but no toggle → HA permission or state import issue
-│  └─ No log at all → Knob hardware issue (check encoder wiring)
+Check these in order:
 
-Step 11 shows double-toggle (both presses fire)?
-├─ This should NOT happen with this firmware
-├─ Check: are you on the correct firmware version? (must be this PR)
-└─ Check logs: should see "INPUT IGNORED" for second press
+1. `light.bedroom_group` works directly from Home Assistant.
+2. `sensor.veladial_door_rotary_veladial_last_bridge_request` exists and changes after a physical tap/press.
+3. The bridge package trigger entity matches the actual entity ID in Developer Tools -> States.
+4. The automation trace timestamp matches the physical tap/press.
+5. The trace parsed the action correctly and did not enter the default error branch.
+6. The target entity is still `light.bedroom_group`.
 
-Screen shows "ENABLE HA ACTIONS" in red?
-├─ Either: HA API not connected, OR permission not granted
-├─ Check: ESPHome device online in HA? (Settings → Devices)
-├─ Check: "Allow device to perform HA actions" enabled?
-└─ Restart HA if recently changed permissions
-```
+Wrong entity IDs are the most likely failure mode. In Hardik's instance, the working IDs are doubled/prefixed `sensor.veladial_door_rotary_veladial...` IDs, not clean `text_sensor.veladial_last_bridge_request` IDs.
 
----
+## Fast Tap Behavior
 
-## Key Log Messages Reference
+Fast repeated taps may appear to do nothing because the current firmware/control path intentionally avoids duplicate command spam:
 
-| Message | Meaning |
-|---------|---------|
-| `INPUT ACCEPTED: knob short press (seq=N)` | Knob press passed 800ms lockout, sending command |
-| `INPUT ACCEPTED: touch power tap (seq=N)` | Touch tap passed 800ms lockout, sending command |
-| `INPUT IGNORED: duplicate within lockout` | Second input within 800ms — correctly blocked |
-| `POWER CMD seq=N: lights_on=X -> sending Y` | Deterministic command (turn_on or turn_off) dispatched |
-| `VERIFY seq=N: state_now=X` | State verification 1000ms after command |
-| `SHORT PRESS: applying theme from selector (no fall-through)` | Theme applied, power toggle NOT fired |
-| `HA API CONNECTED` | API connection established |
-| `HA API DISCONNECTED` | API connection lost |
+- Input lockout ignores duplicate events.
+- The deterministic power script can still be running.
+- Home Assistant state verification may still be in progress.
 
----
+Do not change the control logic during this bridge stabilization pass. The recommended follow-up is to show visible feedback such as `Busy`, `Wait`, `Bridge Sent`, or `Verified` for 1-2 seconds, then tune lockout only after soak testing.
 
-## What Each Diagnostic Button Tests
+## Current Next PR Sequence
 
-| Button Name in HA | HA Action Sent | Isolates |
-|-------------------|---------------|----------|
-| VelaDial Turn ON Bedroom Group | `light.turn_on` | HA permission + entity existence |
-| VelaDial Turn OFF Bedroom Group | `light.turn_off` | Same |
-| VelaDial Test Toggle Bedroom Group | `light.toggle` | Toggle ambiguity |
-| VelaDial Brightness 50 Bedroom Group | `light.turn_on` + `brightness_pct: 50` | Data parameter passing |
-
-**If ALL 4 buttons fail** → HA permission not enabled (100% certain).
-**If buttons work but knob/touch don't** → Input routing bug (report logs).
-**If buttons AND knob/touch work** → Full success. Merge PR.
-
----
-
-## Honest Limitations of This Firmware
-
-1. **Does NOT recreate all 20 rich concept prototypes** — themes differentiate via accent color, motif label, LED ring color, arc visibility/width, and 5 layout groups (structural variants)
-2. **Does NOT use `target:` syntax** — ESPHome only supports `data: entity_id:` (confirmed in docs)
-3. **Does NOT claim physical validation** — awaiting Hardik's hardware test
-4. **Does NOT auto-detect entity** — hardcoded to `light.bedroom_group` via substitution
-5. **A dedicated visual-port PR is needed later** to bring each concept's full unique layout to production
+1. **Stability / UX feedback:** show Busy, Bridge Sent, and Verified states; reduce confusing HA failure messages; keep the bridge control path unchanged.
+2. **UI cleanup:** make the 240 x 240 round screen readable, remove cramped labels, and ship one polished production layout first.
+3. **ThemeOS visual work:** do not implement 20 full themes at once. Start with 5 real layout families: Minimal Thermostat, SmartKnob Arc, Large Center Power, Preset Ring, and Eclipse Corona. Describe the current state as 20 selectable skins / 5 planned layout families.
